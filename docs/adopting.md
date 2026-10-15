@@ -2,14 +2,16 @@
 
 For a new plugin: steps 1 to 4. For one of the three Start apps, which carry a copy of these scripts: all of it, one app at a time, checking against what it did before.
 
-## 1. Put the kit in the repo
+## 1. Add the kit as a submodule
 
 ```sh
-git subtree add --prefix scripts/devkit https://github.com/OWNER/omarchy-plugin-devkit v0.1.0 --squash
-# later: git subtree pull --prefix scripts/devkit https://github.com/OWNER/omarchy-plugin-devkit vX.Y.Z --squash
+git submodule add https://github.com/OWNER/omarchy-plugin-devkit scripts/devkit
+git -C scripts/devkit checkout v0.1.3 && git add scripts/devkit
+git commit -m "Add scripts/devkit: omarchy-plugin-devkit v0.1.3"
+# later, to update: git -C scripts/devkit fetch --tags && git -C scripts/devkit checkout vX.Y.Z && git add scripts/devkit && git commit
 ```
 
-A subtree keeps `git clone` working for everyone, and pins the version. (A submodule or a clone beside the repo works too; nothing in the kit cares where it lives, only `devkit.conf` has to be at the plugin's root.)
+**Why a submodule.** The kit is development tooling: the plugin does not need it to run, and a user should not receive it. `omarchy plugin add` is a plain `git clone`, without `--recurse-submodules`, and `omarchy plugin update` only fast-forwards, so an installed plugin gets an empty `scripts/devkit` folder; and the marketplace's review reads the files of the repository's tree, where a submodule is a pointer, not files. What ships and is reviewed is then the plugin and the app's own scripts, not a copy of the kit in every plugin. An update is a one-line pointer change: no merge commits (a subtree's break GitHub's "Rebase and merge"), no conflicts, and the version is pinned in the commit. Where it costs: a contributor clones with `--recurse-submodules` (or runs `git submodule update --init`), and CI's checkout needs `submodules: true`. Do not edit the files in `scripts/devkit`: fix them in the kit's repository, release, and move the pointer.
 
 ## 2. Write `devkit.conf` ([configuration.md](configuration.md))
 
@@ -20,10 +22,12 @@ At least `TOUR_PLUGIN_ID`. Add `DEVKIT_LAYERS` (the layer-shell names of the plu
 ```bash
 #!/usr/bin/env bash
 export DEVKIT_APP_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-exec "$DEVKIT_APP_ROOT/scripts/devkit/bin/dev" "$@"
+kit=$DEVKIT_APP_ROOT/scripts/devkit/bin/dev
+[[ -x $kit ]] || { echo "scripts/devkit is empty: git submodule update --init scripts/devkit" >&2; exit 1; }
+exec "$kit" "$@"
 ```
 
-The same for `tour` (often `scripts/tour.sh`) and `sheet`. Run from the plugin's checkout, the kit finds it without `DEVKIT_APP_ROOT`; the wrapper makes it work from anywhere, and from a script.
+The same for `tour` (often `scripts/tour.sh`) and `sheet`. In the app's own lint and check scripts, list the kit's files with `shopt -s nullglob` and skip its checks when the folder is empty, so a clone without the submodule still passes what it can. Run from the plugin's checkout, the kit finds it without `DEVKIT_APP_ROOT`; the wrapper makes it work from anywhere, and from a script.
 
 ## 4. Add the checks
 
@@ -89,4 +93,4 @@ Per app, before deleting the copy: on a branch, add the kit and the conf, remove
 4. One tour, with the same crop, comes out the same length and size (StartBar's start-menu clip: 220 KB before, 224 KB after), and "your real files are unchanged" is printed.
 5. The guard did its work: click the plugin's power buttons if it has any, and see `dev status` count the refusals.
 
-StartBar's was done this way in a scratch checkout before the kit was published; the result is above. When the kit changes, update the three apps one at a time with `git subtree pull`, and run the same list.
+StartBar's was done this way in a scratch checkout before the kit was published; the result is above. When the kit changes, update the three apps one at a time with moving the submodule's pointer, and run the same list.

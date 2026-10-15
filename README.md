@@ -23,7 +23,7 @@ The nested session shares your user's systemd, your login session and your syste
 
 ## Use it
 
-1. Put the kit in your plugin's repository (a git subtree is the easiest: `git subtree add --prefix scripts/devkit <url> v0.1.0 --squash`), or clone it beside it.
+1. Add the kit to your plugin's repository as a **submodule** (`git submodule add <url> scripts/devkit`, then check out a tag): development tooling does not ship to users who install the plugin, and a marketplace review sees the plugin, not the kit ([docs/adopting.md](docs/adopting.md)). Or clone it beside the plugin.
 2. Add a `devkit.conf` at the root of your plugin: at least its id.
 
    ```bash
