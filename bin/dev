@@ -75,7 +75,7 @@ usage() {
 # The session's own environment, for running the shell's commands inside it.
 nenv() { env HOME="$NEST_HOME" XDG_CONFIG_HOME="$NEST_HOME/.config" XDG_DATA_HOME="$NEST_HOME/.local/share" \
   XDG_STATE_HOME="$NEST_HOME/.local/state" XDG_CACHE_HOME="$NEST_HOME/.cache" PATH="$GUARD:$PATH" \
-  WAYLAND_DISPLAY="$NWD" HYPRLAND_INSTANCE_SIGNATURE="$NSIG" "$@"; }
+  WAYLAND_DISPLAY="$NWD" HYPRLAND_INSTANCE_SIGNATURE="$NSIG" ${DEVKIT_ENV[@]+"${DEVKIT_ENV[@]}"} "$@"; }
 nested_alive() { HYPRLAND_INSTANCE_SIGNATURE=$NSIG hyprctl monitors -j >/dev/null 2>&1; }
 load() { [[ -s $STATE ]] || die "no session: run dev up"; source "$STATE"; nested_alive || die "the session is gone: run dev up"; }
 # Is the app's window up in the session? By default: is a layer-shell surface of one of DEVKIT_LAYERS mapped. An app whose window is
@@ -210,6 +210,9 @@ cmd_env() {
   load
   printf 'export HOME=%q XDG_CONFIG_HOME=%q XDG_DATA_HOME=%q XDG_STATE_HOME=%q XDG_CACHE_HOME=%q PATH=%q WAYLAND_DISPLAY=%q HYPRLAND_INSTANCE_SIGNATURE=%q\n' \
     "$NEST_HOME" "$NEST_HOME/.config" "$NEST_HOME/.local/share" "$NEST_HOME/.local/state" "$NEST_HOME/.cache" "$GUARD:$PATH" "$NWD" "$NSIG"
+  # DEVKIT_ENV (NAME=value words from devkit.conf) as well, so a script in the session sees what the session's shell does.
+  local kv
+  for kv in ${DEVKIT_ENV[@]+"${DEVKIT_ENV[@]}"}; do printf 'export %q\n' "$kv"; done
 }
 
 cmd_set() { # JSON: merge into the plugin's entry in the session's shell.json
