@@ -59,7 +59,7 @@ Hyprland (the 0.56 Lua API: `hl.dsp.*`, `hl.monitor`, `hl.device`) on Omarchy, r
 
 ## Limits
 
-One session at a time, one monitor, Hyprland only (a different Hyprland Lua API will need changes in `lib/session.sh`), and an Omarchy shell is assumed (`omarchy-shell`, its config layout). Right-clicking an item of a bar on the top or left edge of the session closes its popup at once (not understood; see docs/how-it-works.md).
+One session at a time, one monitor, Hyprland only (a different Hyprland Lua API will need changes in `lib/session.sh`), and an Omarchy shell is assumed (`omarchy-shell`, its config layout).
 
 ## Status
 
