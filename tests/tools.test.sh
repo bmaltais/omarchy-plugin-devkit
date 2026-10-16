@@ -42,7 +42,7 @@ mkdir -p "$c/scripts/devkit"; printf '#!/usr/bin/env bash\nif then\n' >"$c/scrip
 check "check: the submodule's files are not the app's to lint" bash -c "DEVKIT_APP_ROOT='$c' '$KIT/bin/check' >/dev/null 2>&1"
 
 # --- reload --check: link, copy and clone modes say whether the installed plugin is this checkout
-for t in jq omarchy-shell journalctl hyprctl; do command -v "$t" >/dev/null && [[ $t == jq ]] || stub "$t" 'exit 0'; done
+for t in omarchy-shell journalctl hyprctl; do stub "$t" 'exit 0'; done   # jq is the real one
 home=$WORK/home; mkdir -p "$home/.config/omarchy/plugins"
 r=$(mkapp r); rl() { PATH=$stubs:$PATH HOME=$home DEVKIT_APP_ROOT=$r "$KIT/bin/reload" "$@" 2>&1; }
 check "reload: a link to this checkout is in sync" bash -c "ln -sfn '$r' '$home/.config/omarchy/plugins/io.example.r'; PATH='$stubs':\$PATH HOME='$home' DEVKIT_APP_ROOT='$r' '$KIT/bin/reload' --check | grep -q 'in sync (link)'"
