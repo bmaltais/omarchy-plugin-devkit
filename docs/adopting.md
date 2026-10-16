@@ -92,6 +92,12 @@ Also not yet tried. Its `devkit_sandbox` is the part that copies each AppImage a
 | `scripts/lint-qml.py`, `qmllint-check.js` (`npm run lint:qml`) | `bin/qmllint`, with the same baseline file. StartBar's JS version had no list of warnings that can never be baselined; this has |
 | `scripts/check.sh`, `lint-sh.sh`, `lint-rules.sh` | `bin/check`, with the app's own tests in `devkit_check` |
 
+| `.githooks/pre-commit` | a two-line hook calling `bin/pre-commit` (`pre-commit --install` writes it). StartBar sets `DEVKIT_PROTECT_BRANCHES=()` and `DEVKIT_CHECK_CMD=(npm run --silent check)` to keep what it does now |
+| `.github/workflows/check.yml` | the triggers stay in the app (StartBar also builds `release/**`); the job is `uses: …/app-check.yml@vX.Y.Z` |
+| `scripts/open-release.sh` | `bin/release-branch` |
+| `scripts/try-setting.sh` | `bin/try-setting`; StartBar's default command (`omarchy-shell ID layout`) becomes `try_default` in its `devkit.conf` |
+| `scripts/spare.sh`, `scripts/hypr-events.sh` | `bin/spare`, `bin/hypr-events`. The spare window's class is still `spare-test`, which `pointer key` allows by default |
+
 Not moved: `screenshots.sh`, `preview.sh`, `make-preview.sh`, `clips.sh` and `hero.sh`. What they do is mostly the app's own (which windows, in which order, at which pixels, composed how), and the part that is common is a few lines of ImageMagick.
 
 ## Checking nothing broke

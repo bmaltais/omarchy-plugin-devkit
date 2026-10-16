@@ -1,0 +1,32 @@
+name: App check
+
+# The check of a plugin that uses the devkit, for the app's own workflow to call:
+#
+#   jobs:
+#     check:
+#       uses: bmaltais/omarchy-plugin-devkit/.github/workflows/app-check.yml@v0.2.0
+#       with: { node: true }
+#
+# It checks out the app with its submodules and runs scripts/devkit/bin/check: shell scripts, the devkit's rules, and the app's own steps
+# (devkit_check in devkit.conf). The QML and manifest steps skip themselves where qmllint or omarchy are not installed, as on this runner.
+on:
+  workflow_call:
+    inputs:
+      node:
+        description: "Install Node 22 (the app's tests use node)"
+        type: boolean
+        default: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-node@v4
+        if: inputs.node
+        with:
+          node-version: 22
+      - run: sudo apt-get install -y shellcheck jq perl
+      - run: scripts/devkit/bin/check

@@ -33,8 +33,13 @@ DEVKIT_LAYERS=(omarchy-myplugin)
 | `DEVKIT_RELOAD_MODE` | How `reload` puts the checkout in the shell: `link`, `copy`, `clone` or `auto` (found from `~/.config/omarchy/plugins/ID`) | `auto` |
 | `DEVKIT_RELOAD_EXCLUDE=(path …)` | `reload` in `copy` mode leaves these out as well as `.git`, `tests`, `screenshots`, `node_modules`, `preview.png`, `docs`, `*.md`, `scripts/devkit` | none |
 | `DEVKIT_RELOAD_READY` | The plugin's IPC method that answers once its service is loaded (`state`): `reload` waits for it before opening a window | none |
-| `DEVKIT_KEY_CLASSES=(class …)` | Window classes `pointer key` may send keys to (throwaway test windows). Keys are refused to anything else | none |
+| `DEVKIT_KEY_CLASSES=(class …)` | Window classes `pointer key` may send keys to (throwaway test windows). Keys are refused to anything else | `(spare-test)`, the window `spare open` starts |
 | `DEVKIT_SH_FILES=(path …)` | Shell files `check` lints besides `scripts/`, `tests/` and `.githooks/` | none |
+
+| `DEVKIT_PROTECT_BRANCHES=(name …)` | Branches `pre-commit` refuses a commit on (`ALLOW_MAIN=1` overrides) | `(main)` |
+| `DEVKIT_CHECK_CMD=(cmd …)` | What `pre-commit` runs as the check | the kit's `bin/check` |
+
+`try-setting` reads the shell config named by `DEVKIT_SHELL_JSON` (default `~/.config/omarchy/shell.json`).
 
 `qmllint` reads two environment variables, as it is Python: `DEVKIT_APP_ROOT` and `DEVKIT_QML_BASELINE` (default `scripts/qmllint-baseline.txt`).
 
@@ -48,6 +53,7 @@ DEVKIT_LAYERS=(omarchy-myplugin)
 | `dev_cmd_NAME ARGS…` | `dev NAME ARGS…`, with the session known to be up | add a command: open a window, call the plugin's IPC. Helpers: `dev_window LABEL ARGS…` (calls `omarchy-shell ARGS` in the session, checks the window opened, says so), `nenv`, `$ID` |
 | `reload_open WINDOW ARG…` | by `reload`, to open a window of the plugin in the real shell | replace `omarchy-shell ID WINDOW ARG…` (close it first so a toggle cannot hide it, refuse an argument that is missing) |
 | `devkit_check` | by `check`, after its own steps | run the app's own tests with `step NAME COMMAND…` |
+| `try_default` | by `try-setting`, when no command is given | print what the app shows for the setting (StartBar: its Dock layout) |
 | `tour_requires` | first, by `tour`, with your real home | check what the tour needs; print a reason and return non-zero if it is missing |
 
 In a hook running in `dev`: `nenv COMMAND…` runs a command in the session's environment (its home, its guard, its compositor), `$ID` is the plugin id, `$NEST_HOME` the session's home, `$NSIG`/`$NWD` its Hyprland signature and Wayland socket, `shell_up` asks whether its shell answers.

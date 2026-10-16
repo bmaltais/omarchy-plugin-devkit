@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# pre-commit: the git hook every Start app runs. Refuses a commit on a protected branch (work goes on a branch and lands through a pull
+# request), then runs the app's check. Quiet when everything passes; prints the whole run when something fails.
+#
+#   In the app: .githooks/pre-commit   exec "$(git rev-parse --show-toplevel)/scripts/devkit/bin/pre-commit"
+#               once per clone:        git config core.hooksPath .githooks        (bin/pre-commit --install does both)
+#
+#   Override for the rare commit that must go on a protected branch:  ALLOW_MAIN=1 git commit ...
+#
+# devkit.conf: DEVKIT_PROTECT_BRANCHES=(main) is the list of branches (empty: any is allowed); DEVKIT_CHECK_CMD=(npm run --silent check)
+# is the check to run (default: this kit's bin/check, which runs the app's devkit_check).
+set -uo pipefail
+
+# shellcheck source=../lib/config.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/config.sh"
+root=$(git rev-parse --show-toplevel) || exit 1
+export DEVKIT_APP_ROOT=$root
+
+if [[ ${1:-} == --install ]]; then
+  mkdir -p "$root/.githooks"
+  # The path of the kit from the app, so the hook finds it when it is a submodule at scripts/devkit or beside the app.
+  rel=$(realpath --relative-to="$root" "$DEVKIT/bin/pre-commit")
+  printf '#!/usr/bin/env bash\n# Enable once per clone: git config core.hooksPath .githooks\nexec "$(git rev-parse --show-toplevel)/%s"\n' "$rel" >"$root/.githooks/pre-commit"
+  chmod +x "$root/.githooks/pre-commit"
+  git -C "$root" config core.hooksPath .githooks
+  echo "pre-commit: installed (.githooks/pre-commit runs $rel)"
+  exit 0
+fi
+
+devkit_load_config || exit 1
+branch=$(git symbolic-ref --short -q HEAD || true)
+for b in "${DEVKIT_PROTECT_BRANCHES[@]}"; do
+  if [[ $branch == "$b" && -z ${ALLOW_MAIN:-} ]]; then
+    echo "pre-commit: you are on $b. Make a branch first: git checkout -b <topic>"
+    echo "            (ALLOW_MAIN=1 git commit ... overrides this)"
+    exit 1
+  fi
+done
+cmd=("${DEVKIT_CHECK_CMD[@]}")
+((${#cmd[@]})) || cmd=("$DEVKIT/bin/check")
+if ! output=$(cd "$root" && "${cmd[@]}" 2>&1); then
+  echo "$output"
+  echo "pre-commit: ${cmd[*]} failed"
+  exit 1
+fi

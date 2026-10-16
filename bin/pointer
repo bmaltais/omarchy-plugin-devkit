@@ -9,7 +9,7 @@
 #   pointer reveal                warp to the bottom edge of the monitor under the pointer and wait, so an auto-hidden bar rises
 #   pointer left | right          click where the pointer is, and say which windows are under it
 #   pointer key CODE:1 CODE:0 ... keys (ydotool codes), only while a throwaway window has focus: one whose class is listed in
-#                                 DEVKIT_KEY_CLASSES in devkit.conf (none by default, so keys are refused)
+#                                 DEVKIT_KEY_CLASSES in devkit.conf (default: spare-test, the window `spare open` starts)
 #   pointer shot FILE [WxH+X+Y]   screenshot the monitor under the pointer, cropped to WxH+X+Y of that monitor if given
 #
 # PX,PY are the pixels you read off a screenshot of the focused monitor; this works out the monitor's place in the layout and its
@@ -18,11 +18,11 @@
 set -euo pipefail
 
 case ${1:-} in -h | --help | "") sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//' >&2; exit 2 ;; esac
-DEVKIT_KEY_CLASSES=()
+DEVKIT_KEY_CLASSES=(spare-test)
 # shellcheck source=../lib/config.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/config.sh"
 # The conf is optional here: the pointer works without an app, and only `key` reads it.
-if [[ -f ${DEVKIT_CONF:-${DEVKIT_APP_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/devkit.conf} ]]; then devkit_load_config || exit 1; fi
+devkit_load_config_optional || exit 1
 
 for tool in ydotool hyprctl jq; do command -v "$tool" >/dev/null || { echo "pointer: $tool is not installed" >&2; exit 2; }; done
 export YDOTOOL_SOCKET="${XDG_RUNTIME_DIR:-/tmp}/.ydotool_socket"

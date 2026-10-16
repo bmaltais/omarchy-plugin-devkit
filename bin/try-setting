@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# try-setting: try a plugin setting on your REAL shell, then put your config back. Merges the JSON object into the plugin's entry in
+# ~/.config/omarchy/shell.json, waits for the shell to re-read it, runs the command, and restores shell.json on exit, even when the
+# command fails. (For a setting in the nested test session, use `dev set`.)
+#
+#   try-setting '{"position":"top","autoHide":false}'
+#   try-setting '{"position":"left"}' -- pointer shot /tmp/left.png 300x600+0+0
+#
+# With no command it runs try_default from devkit.conf if the app defines one (StartBar prints its layout), else prints the plugin's
+# entry as the shell now has it. The file is rewritten in place (cat >, not mv): the shell watches it.
+set -euo pipefail
+
+# shellcheck source=../lib/config.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/config.sh"
+case ${1:-} in -h | --help | "") sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//' >&2; exit 2 ;; esac
+devkit_load_config || exit 1
+config=${DEVKIT_SHELL_JSON:-$HOME/.config/omarchy/shell.json}
+id=$TOUR_PLUGIN_ID
+patch=$1
+shift
+[[ ${1:-} != -- ]] || shift
+
+jq -e --arg id "$id" '.plugins | any(.id == $id)' "$config" >/dev/null || { echo "try-setting: $id is not in $config" >&2; exit 1; }
+jq -e 'type == "object"' <<<"$patch" >/dev/null || { echo "try-setting: the setting must be a JSON object" >&2; exit 2; }
+
+backup=$(mktemp)
+cp "$config" "$backup"
+restore() {
+  cat "$backup" >"$config"
+  rm -f "$backup"
+  sleep 1.5
+}
+trap restore EXIT
+
+jq --arg id "$id" --argjson patch "$patch" '(.plugins[] | select(.id == $id)) += $patch' "$backup" >"$config"
+sleep 1.5
+
+if (($# > 0)); then "$@"
+elif declare -F try_default >/dev/null; then try_default
+else jq -c --arg id "$id" '.plugins[] | select(.id == $id)' "$config"; fi

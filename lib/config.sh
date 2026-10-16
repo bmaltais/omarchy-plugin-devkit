@@ -23,7 +23,9 @@ devkit_load_config() {
   DEVKIT_GUARD_EXTRA=()
   DEVKIT_LAYERS=()
   DEVKIT_NOISE=""
-  DEVKIT_KEY_CLASSES=()
+  DEVKIT_KEY_CLASSES=(spare-test)
+  DEVKIT_PROTECT_BRANCHES=(main)
+  DEVKIT_CHECK_CMD=()
   DEVKIT_SH_FILES=()
   DEVKIT_RELOAD_MODE=auto
   DEVKIT_RELOAD_READY=""
@@ -37,4 +39,10 @@ devkit_load_config() {
   : "${DEVKIT_NAME:=$(basename "$REPO" | tr '[:upper:]' '[:lower:]')}"
   : "${TOUR_TITLE:=$DEVKIT_NAME}"
   jq -e 'type == "object"' <<<"$TOUR_PLUGIN_ENTRY" >/dev/null 2>&1 || { echo "devkit: TOUR_PLUGIN_ENTRY in $DEVKIT_CONF is not a JSON object" >&2; return 1; }
+}
+
+# For a command that works without an app (pointer, spare): load the conf when there is one, else keep the defaults it sets.
+devkit_load_config_optional() {
+  local root=${DEVKIT_APP_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}
+  if [[ -f ${DEVKIT_CONF:-$root/devkit.conf} ]]; then devkit_load_config; fi
 }

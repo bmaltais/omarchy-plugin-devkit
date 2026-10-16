@@ -63,4 +63,33 @@ check "pointer: keys are refused to a window that is not listed" bash -c "export
 check "pointer: keys go to a listed throwaway window" bash -c "export FOCUS=throwaway YD_LOG='$YD_LOG'; PATH='$stubs':\$PATH XDG_RUNTIME_DIR='$WORK/run' DEVKIT_APP_ROOT='$p' '$KIT/bin/pointer' key 30:1 >/dev/null 2>&1 && grep -q 'key 30:1' '$YD_LOG'"
 check "pointer: click moves, nudges and clicks" bash -c "export FOCUS=x YD_LOG='$YD_LOG'; : >'$YD_LOG'; PATH='$stubs':\$PATH XDG_RUNTIME_DIR='$WORK/run' DEVKIT_APP_ROOT='$p' '$KIT/bin/pointer' click 10 20 >/dev/null 2>&1 && grep -q 'click 0xC0' '$YD_LOG'"
 check "pointer: a right click is 0xC1" bash -c "export FOCUS=x YD_LOG='$YD_LOG'; : >'$YD_LOG'; PATH='$stubs':\$PATH XDG_RUNTIME_DIR='$WORK/run' DEVKIT_APP_ROOT='$p' '$KIT/bin/pointer' click 10 20 right >/dev/null 2>&1 && grep -q 'click 0xC1' '$YD_LOG'"
+
+# --- pre-commit: refuses a protected branch, runs the check, reports its failure
+g=$(mkapp g 'DEVKIT_CHECK_CMD=(test -f ok.txt)'); git -C "$g" checkout -q -b main 2>/dev/null
+hook() { (cd "$g" && "$KIT/bin/pre-commit" "$@" 2>&1); }
+check "pre-commit: a commit on main is refused" bash -c "! (cd '$g' && '$KIT/bin/pre-commit' >/dev/null 2>&1)"
+check "pre-commit: ALLOW_MAIN lets it through to the check, which fails here" bash -c "! (cd '$g' && ALLOW_MAIN=1 '$KIT/bin/pre-commit' >/dev/null 2>&1)"
+git -C "$g" checkout -q -b topic; touch "$g/ok.txt"
+check "pre-commit: a topic branch whose check passes is quiet and passes" bash -c "[[ -z \$(cd '$g' && '$KIT/bin/pre-commit' 2>&1) ]]"
+rm "$g/ok.txt"
+check "pre-commit: a failing check blocks the commit and prints why" bash -c "! (cd '$g' && '$KIT/bin/pre-commit' >/dev/null 2>&1)"
+check "pre-commit: --install writes the hook and points git at it" bash -c "cd '$g' && '$KIT/bin/pre-commit' --install >/dev/null && [[ -x .githooks/pre-commit ]] && [[ \$(git config core.hooksPath) == .githooks ]] && grep -q 'bin/pre-commit' .githooks/pre-commit"
+
+# --- try-setting: merges, runs the command, and puts the config back
+t=$(mkapp t); sj=$WORK/shell.json
+printf '{"plugins":[{"id":"io.example.t","a":1},{"id":"other"}]}' >"$sj"
+orig=$(cat "$sj")
+ts() { (cd "$t" && DEVKIT_SHELL_JSON=$sj "$KIT/bin/try-setting" "$@" 2>&1); }
+check "try-setting: the command sees the merged setting" bash -c "[[ \$(cd '$t' && DEVKIT_SHELL_JSON='$sj' '$KIT/bin/try-setting' '{\"a\":2}' -- jq -r '.plugins[0].a' '$sj') == 2 ]]"
+check "try-setting: shell.json is back as it was" test "$(cat "$sj")" = "$orig"
+check "try-setting: it is restored when the command fails" bash -c "(cd '$t' && DEVKIT_SHELL_JSON='$sj' '$KIT/bin/try-setting' '{\"a\":3}' -- false >/dev/null 2>&1); [[ \$(cat '$sj') == '$orig' ]]"
+check "try-setting: a plugin that is not in shell.json is refused" bash -c "! (cd '$t' && DEVKIT_SHELL_JSON='$WORK/none.json' '$KIT/bin/try-setting' '{}' >/dev/null 2>&1)"
+
+# --- release-branch: the highest release branch without a tag
+rb=$WORK/rb; git init -q --bare "$rb/origin" 2>/dev/null; git init -q "$rb/w"; cd "$rb/w" || exit 1
+git -c user.email=a@b -c user.name=n commit -q --allow-empty -m i; git remote add origin "$rb/origin"
+for v in 1.0.1 1.0.2; do git branch "release/$v"; done; git tag v1.0.1; git push -q origin --all 2>/dev/null; git push -q origin --tags 2>/dev/null
+check "release-branch: the highest untagged release branch is the open one" test "$("$KIT/bin/release-branch" 2>/dev/null)" = "release/1.0.2"
+git tag v1.0.2; git push -q origin --tags 2>/dev/null
+check "release-branch: all tagged: fails and names the next version" bash -c "out=\$('$KIT/bin/release-branch' 2>&1); [[ \$out == *release/1.0.3* ]] && ! '$KIT/bin/release-branch' >/dev/null 2>&1"
 finish
