@@ -53,6 +53,13 @@ check "reload: a plain copy that matches (docs, tests and the kit left out) is i
 
 check "reload: a copy of an app with a devkit submodule folder is in sync (diff must skip scripts/devkit as tar does)" bash -c "mkdir -p '$r/scripts/devkit/bin'; echo k >'$r/scripts/devkit/bin/x'; PATH='$stubs':\$PATH HOME='$home' DEVKIT_APP_ROOT='$r' '$KIT/bin/reload' --check | grep -q 'in sync (copy)'"
 
+# A freshly committed tree has nothing "local": --check must say so, exit 0 and not stop early (the old app test guarded this under set -e).
+cl=$(mkapp cl); mkdir -p "$home/.config/omarchy/plugins/io.example.cl"; cp -r "$cl/devkit.conf" "$cl/scripts" "$home/.config/omarchy/plugins/io.example.cl/"
+git -C "$cl" add -A; git -C "$cl" -c user.email=a@b -c user.name=n commit -q -m files
+check "reload: --check on a clean tree exits 0, says in sync and has no +local" bash -c "out=\$(PATH='$stubs':\$PATH HOME='$home' DEVKIT_APP_ROOT='$cl' '$KIT/bin/reload' --check) && [[ \$out == *'in sync (copy)'* && \$out != *+local* ]]"
+echo y >"$cl/new.txt"
+check "reload: --check with an uncommitted file marks it +local" bash -c "PATH='$stubs':\$PATH HOME='$home' DEVKIT_APP_ROOT='$cl' '$KIT/bin/reload' --check | grep -q '+local'"
+
 # --- pointer: keys only go to the windows the app allows
 stub hyprctl 'case "$*" in *monitors*) echo "[{\"focused\":true,\"x\":0,\"y\":0,\"scale\":1,\"width\":100,\"height\":100,\"name\":\"M\"}]" ;; *activewindow*) echo "{\"class\":\"$FOCUS\"}" ;; *cursorpos*) echo "{\"x\":1,\"y\":1}" ;; esac'
 stub ydotool 'echo "$*" >>"$YD_LOG"'
