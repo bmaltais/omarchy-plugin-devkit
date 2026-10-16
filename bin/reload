@@ -68,7 +68,9 @@ fi
 
 excludes=(--exclude=.git --exclude=tests --exclude=screenshots --exclude=node_modules --exclude=preview.png --exclude=scripts/devkit)
 for e in "${DEVKIT_RELOAD_EXCLUDE[@]}"; do excludes+=("--exclude=$e"); done
-copy_excludes=("${excludes[@]}" --exclude=docs --exclude='*.md')
+# diff matches --exclude against file names only, tar against paths, so diff gets the last component of each pattern.
+copy_excludes=(--exclude=docs --exclude='*.md')
+for e in "${excludes[@]}"; do e=${e#--exclude=}; copy_excludes+=("--exclude=${e##*/}"); done
 
 in_sync() {
   case $mode in

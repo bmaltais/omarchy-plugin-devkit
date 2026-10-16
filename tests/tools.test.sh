@@ -51,6 +51,8 @@ rm "$home/.config/omarchy/plugins/io.example.r"
 check "reload: a plain copy that differs is reported" bash -c "mkdir -p '$home/.config/omarchy/plugins/io.example.r'; echo x >'$home/.config/omarchy/plugins/io.example.r/f'; ! PATH='$stubs':\$PATH HOME='$home' DEVKIT_APP_ROOT='$r' '$KIT/bin/reload' --check | grep -q 'in sync'"
 check "reload: a plain copy that matches (docs, tests and the kit left out) is in sync" bash -c "rm -rf '$home/.config/omarchy/plugins/io.example.r'; mkdir -p '$r/docs' '$r/tests'; cp -r '$r/devkit.conf' '$r/scripts' '$home/.config/omarchy/plugins/' 2>/dev/null; mkdir -p '$home/.config/omarchy/plugins/io.example.r'; cp -r '$r/devkit.conf' '$r/scripts' '$home/.config/omarchy/plugins/io.example.r/'; PATH='$stubs':\$PATH HOME='$home' DEVKIT_APP_ROOT='$r' '$KIT/bin/reload' --check | grep -q 'in sync (copy)'"
 
+check "reload: a copy of an app with a devkit submodule folder is in sync (diff must skip scripts/devkit as tar does)" bash -c "mkdir -p '$r/scripts/devkit/bin'; echo k >'$r/scripts/devkit/bin/x'; PATH='$stubs':\$PATH HOME='$home' DEVKIT_APP_ROOT='$r' '$KIT/bin/reload' --check | grep -q 'in sync (copy)'"
+
 # --- pointer: keys only go to the windows the app allows
 stub hyprctl 'case "$*" in *monitors*) echo "[{\"focused\":true,\"x\":0,\"y\":0,\"scale\":1,\"width\":100,\"height\":100,\"name\":\"M\"}]" ;; *activewindow*) echo "{\"class\":\"$FOCUS\"}" ;; *cursorpos*) echo "{\"x\":1,\"y\":1}" ;; esac'
 stub ydotool 'echo "$*" >>"$YD_LOG"'
