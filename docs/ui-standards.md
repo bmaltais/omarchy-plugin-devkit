@@ -11,7 +11,7 @@ Sizes are written the way the code writes them: `space(n)` is `Style.space(n)`, 
 ## Principles
 
 1. **Follow the theme, always.** Colours, fonts, corner radius and spacing come from the shell (`Color`, `Style`, `Util.alpha`). Nothing is hard-coded, so the UI follows the Omarchy theme live. Muted text is the foreground at about 55% opacity, hairlines about 14%.
-2. **Same as the family where they overlap.** The settings window is StartBar's design; see [Shared UI code](#shared-ui-code) for which app holds the code. When two apps disagree on a shared part, ask which is right and fix the other one.
+2. **Same as the family where they overlap.** StartBar's settings window is the reference *design* and StartAppImage's `SettingsWindow` the reference *implementation* (see [Shared UI code](#shared-ui-code)). When two apps disagree on a shared part, ask which is right, fix the other one, and fix this file if it is the one that is wrong.
 3. **Changes happen when you make them.** No Apply buttons for settings (see [Applying settings](#applying-settings)). A change that cannot be made says so, and goes back.
 4. **The window you came from stays.** A window opened from another one floats over it; closing it brings the first back.
 5. **Everything in the UI has a command-line equivalent.** The QML never edits files or runs system commands; it asks the app's CLI. A setting that exists in a window exists as an option of the CLI.
@@ -130,7 +130,7 @@ A change is done once it has been seen working in the test session: [testing.md]
 
 ## Shared UI code
 
-The controls above, `SettingsWindow`, the drag-and-resize behaviour are meant to be shared by every Start app, so each does not keep its own copy. The test session and the tour recorder already are (this kit). The UI code is not yet; the proposal is a shared `StartUI` repository added to each app as a git submodule. Until it exists:
+The controls above, `SettingsWindow` and the drag-and-resize behaviour are meant to look and behave the same in every Start app. Each app keeps its own copy of the QML: a shared UI repository was considered and set aside, because the files are small, the apps differ in the details, and a change would then need a commit in two places and a version bump in three. The copies are kept alike by hand, so:
 
 - **StartAppImage is the reference implementation.** StartDrive's copies are kept identical to its except for additions that belong upstream when the shared repo exists (they are listed in StartDrive's `ui-standards.md`).
 - **StartBar's settings window is the reference design.**
