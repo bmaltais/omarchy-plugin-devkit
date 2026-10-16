@@ -27,11 +27,11 @@ kit=$DEVKIT_APP_ROOT/scripts/devkit/bin/dev
 exec "$kit" "$@"
 ```
 
-The same for `tour` (often `scripts/tour.sh`) and `sheet`. In the app's own lint and check scripts, list the kit's files with `shopt -s nullglob` and skip its checks when the folder is empty, so a clone without the submodule still passes what it can. Run from the plugin's checkout, the kit finds it without `DEVKIT_APP_ROOT`; the wrapper makes it work from anywhere, and from a script.
+The same for `tour` (often `scripts/tour.sh`), `sheet`, `check` (`scripts/check.sh`), `reload`, `pointer` and `qmllint`. A wrapper that finds the submodule empty says so and exits, so a clone without it fails with the fix in the message. Run from the plugin's checkout, the kit finds it without `DEVKIT_APP_ROOT`; the wrapper makes it work from anywhere, and from a script.
 
 ## 4. Add the checks
 
-`scripts/devkit/bin/lint` in the plugin's check script, and the devkit's scripts in its shellcheck list (`scripts/devkit/bin/*`, `scripts/devkit/lib/*.sh`). If the plugin's tests exercise the guard, point them at `scripts/devkit/lib/session.sh`.
+The app's check is `scripts/devkit/bin/check`: it runs shellcheck on the app's own scripts (never the kit's), `lint`, `qmllint` and the manifest check, then the app's `devkit_check` hook for its own tests. Do not glob `scripts/devkit/bin/*` into an app's own shellcheck list: `qmllint` is Python. If the plugin's tests exercise the guard, point them at `scripts/devkit/lib/session.sh`.
 
 ## Moving a Start app off its copy
 
