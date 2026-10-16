@@ -24,7 +24,7 @@ Sizes are written the way the code writes them: `space(n)` is `Style.space(n)`, 
 
 Every window of the apps with a manager is a card on a full-screen layer-shell overlay with a dimmed scrim. The card has the menu background, a hairline border at 14% foreground, the theme radius and a soft shadow.
 
-- **Dismissing.** Esc closes only the topmost window. In a search box, Esc clears the text first. A click on the scrim closes the topmost window.
+- **Dismissing.** Esc closes only the topmost window. In a search box, Esc clears the text first. A click on the scrim closes the topmost window. (StartBar's settings window has no scrim: it is a transparent layer that takes input only on its frame, so a click outside reaches the desktop and you see the Dock change as you adjust it. A window that edits something visible on the desktop should not dim it.)
 - **Stacking.** A settings window floats over the manager, which stays visible behind it under a 35% dark veil. Only one settings window is open at a time. Closing it returns the keyboard to the manager.
 - **Opening.** The manager opens where the user last left it (see [Remembered state](#remembered-state)).
 - **Close button.** A ✕ in the top-right corner of every card, 8 from the edges.
@@ -32,7 +32,7 @@ Every window of the apps with a manager is a card on a full-screen layer-shell o
 | Card | Width | Height | Moves | Resizes | Closes with |
 |---|---|---|---|---|---|
 | Manager | 640 (or the user's) | its content, up to 580 and the screen minus 80 | yes | yes | Esc, ✕, click outside |
-| Settings window | 760 (or the user's) | 520 (or the user's), at most the screen minus 80 | yes | yes | Esc, ✕, click outside or on the dimmed manager |
+| Settings window | 760 (or the user's); StartBar 780 | 520 (or the user's); StartBar 620; at most the screen minus 80 | yes | yes | Esc, ✕, click outside or on the dimmed manager |
 
 A settings window for one thing inside the app (one drive's, one AppImage's) has the same size, place and way of closing as the app's own.
 
@@ -71,7 +71,7 @@ Within an app every settings window is the same component (StartBar's lives in `
 - **Body.** Scrolls when the page is taller than the window, with the [scroll bar](#controls) in a gutter that is always reserved, so the width never changes.
 - **Setting row.** The label (body size) with its hint under it (caption size, 55% opacity), the control on the right, a hairline at 50% under each row. The row is as tall as its label plus hint, with 6 above and below. A **note** can sit under the control, for what a change or button did: muted for information, accent for a done action, red for an error.
 - **Disabled setting.** Dimmed to 40%, not clickable, and the hint says why. An option that depends on another is dimmed while that one is off.
-- **Footer (52).** A hairline above it. On the left one muted line: "Changes apply instantly · Esc to close". On the right the window's pills, 30 clear of the resize grip.
+- **Footer (52).** A hairline above it. On the left one muted line: "Changes apply instantly · Esc to close" (the code spaces the separator with three spaces, so the line reads the same in every app). On the right the window's pills, 30 clear of the resize grip.
 - **Words.** Page names are sentence case and one word where possible.
 
 A new setting goes on the page it belongs to, or a new page if none fits. Settings that live in the CLI's options are added to the window's `pages` list, to the CLI, and to the app's table of settings in its own `ui-standards.md`.
@@ -83,7 +83,7 @@ A new setting goes on the page it belongs to, or a new page if none fits. Settin
 - **Failure.** A change that fails flips its control back on the read-back and says why: under the setting where the window can show it, otherwise a critical notification ("Setting was not applied" and the reason).
 - **Window stays open.** Applying never closes the window.
 - **Reset to defaults.** A soft pill. The first click turns it red and asks "Click again to reset everything" for 3 seconds; the second click applies the defaults. The defaults are the CLI's, not written in the QML.
-- **First run.** The settings window opens once, a few seconds after the plugin first loads, showing what is on now. The footer has **Not now** and an accent-filled **Enable recommended**. After the first change or **Not now** it never opens by itself again.
+- **First run.** For an app with opt-in setup to offer (StartAppImage, StartDrive), the settings window opens once, a few seconds after the plugin first loads, showing what is on now. The footer has **Not now** and an accent-filled **Enable recommended**. After the first change or **Not now** it never opens by itself again. An app whose defaults already work (StartBar) has no first run.
 - **Text.** Esc drops what is typed in a text box and then closes the window: leaving never saves.
 
 ## Controls
