@@ -72,6 +72,6 @@ One session at a time, one monitor, Hyprland only (a different Hyprland Lua API 
 
 ## Status
 
-0.2.1: `reload` no longer reports an app with a scripts/devkit submodule folder as out of sync in copy mode. 0.2.0: adds `reload`, `pointer`, `check`, `qmllint`, `pre-commit`, `try-setting`, `release-branch`, `spare`, `hypr-events` and a reusable `app-check` workflow, the scripts the three Start apps each carried. 0.1.x: the test session, recorder and guard, extracted from StartBar's copy; StartBar is on it, StartDrive and StartAppImage are next (docs/adopting.md).
+0.2.2: adds docs/ui-standards.md, the UI standards every Start app shares. 0.2.1: `reload` no longer reports an app with a scripts/devkit submodule folder as out of sync in copy mode. 0.2.0: adds `reload`, `pointer`, `check`, `qmllint`, `pre-commit`, `try-setting`, `release-branch`, `spare`, `hypr-events` and a reusable `app-check` workflow, the scripts the three Start apps each carried. 0.1.x: the test session, recorder and guard, extracted from StartBar's copy; StartBar is on it, StartDrive and StartAppImage are next (docs/adopting.md).
 
 MIT licensed.

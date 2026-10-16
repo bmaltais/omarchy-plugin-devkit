@@ -20,6 +20,8 @@ Sizes are written the way the code writes them: `space(n)` is `Style.space(n)`, 
 
 ## Windows
 
+**Which apps this covers.** The Manager rows, the sizes and the move-and-resize rules below are for the apps that have a manager window (StartAppImage, StartDrive). StartBar has none: its settings window is the reference *design* (layout, sizes, controls) but it moves by its top strip, centres on open, and does not resize or remember its place.
+
 Every window of the apps with a manager is a card on a full-screen layer-shell overlay with a dimmed scrim. The card has the menu background, a hairline border at 14% foreground, the theme radius and a soft shadow.
 
 - **Dismissing.** Esc closes only the topmost window. In a search box, Esc clears the text first. A click on the scrim closes the topmost window.
