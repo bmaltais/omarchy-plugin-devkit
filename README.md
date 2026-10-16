@@ -62,6 +62,7 @@ Hyprland (the 0.56 Lua API: `hl.dsp.*`, `hl.monitor`, `hl.device`) on Omarchy, r
 - [docs/configuration.md](docs/configuration.md): every variable and hook of `devkit.conf`, and what a tour file sets.
 - [docs/testing.md](docs/testing.md): the test session, its commands, and how a plugin's own scripts (smoke tests, screenshots) use it.
 - [docs/recording-tours.md](docs/recording-tours.md): writing and recording tours.
+- [docs/ui-standards.md](docs/ui-standards.md): how the Start apps' windows, settings window and controls look and behave, and why; the part every app shares.
 - [docs/how-it-works.md](docs/how-it-works.md): the design, and what went wrong on the way to it.
 - [docs/adopting.md](docs/adopting.md): moving a plugin onto the kit, and what changed against the copies the three Start apps carry.
 

@@ -10,6 +10,8 @@ bin/sheet /tmp/hero.avif       # one contact sheet of the whole recording, to ch
 
 The tour runs in the [test session](testing.md), so **your mouse and keyboard stay yours** and nothing of yours is changed: a red strip along the top of your screen shows the step and has a **Cancel recording** button (Ctrl+C in the terminal does the same), and a view-only window shows the recording as it happens. Cancel and the run stops within a step, the sandbox is thrown away and nothing is kept. Do not run a tour and `dev` at the same time.
 
+A tour takes a few minutes to record, of which the tour itself is the minute and a half. Retake it when a step of it changes (a menu row moves, a label is renamed), and look at the result before you commit it: it clicks the real plugin, so a changed layout can make it miss. Do not run two at once.
+
 ## What happens when you run it
 
 1. **A far monitor** (`TOURTEST`, 1280×800) is created 20,000 px to the right of your screens.
@@ -46,7 +48,7 @@ tour_play() {
 
 ## Clips
 
-A tour with `TOUR_CROP=WxH+X+Y` keeps only that box of the session's screen, so a short tour of one part of a plugin can stand in for a still image in a README. No captions (the crop is small), and start and end on the same picture so the animation loops. A flat backdrop (`TOUR_BACKDROP=plain`, a full-screen `imv` window) suits a plugin whose windows are overlays; it hides a layer below it, so a bar or dock keeps the wallpaper.
+A tour with `TOUR_CROP=WxH+X+Y` keeps only that box of the session's screen, so a short tour of one part of a plugin can stand in for a still image in a README. No captions (the crop is small; a clip is meant to be read as a picture), and start and end on the same picture so the animation loops: the plugin idle, the menu closed, or a window opened in `tour_setup` and ending on the page it began on. Aim for 14 to 21 seconds and 50 to 220 KB as an AVIF. A flat backdrop (`TOUR_BACKDROP=plain`, a full-screen `imv` window) suits a plugin whose windows are overlays; it hides a layer below it, so a bar or dock keeps the wallpaper (a full-screen window may be drawn over a Top layer).
 
 ## Reference
 
