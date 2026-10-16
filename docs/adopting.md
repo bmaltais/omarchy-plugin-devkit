@@ -83,6 +83,17 @@ It also has a bar widget (leave `TOUR_PLUGIN_WIDGET` at 1), keeps `dev move` (th
 
 Also not yet tried. Its `devkit_sandbox` is the part that copies each AppImage a manifest names into the sandbox and points the `EXEC=`, `DESKTOP=` and `Exec=` paths at the copies (today `sandbox_repoint` in its `session.sh`), with `TOUR_SANDBOX_COPY=(.local/share/startappimage .local/share/applications)`. Keep that function as it is, in `devkit.conf`.
 
+### The commands that came later
+
+| Was (a script in each app) | Is |
+|---|---|
+| `scripts/pointer.sh` | `bin/pointer`. `click`, `move` and `pos` use the pixels of a screenshot of the focused monitor (StartDrive's, StartAppImage's). StartBar's `move X Y` took global layout coordinates: that is now `warp X Y`. `reveal`, `left`, `right`, `shot` are as StartBar's; `key` is allowed only into the classes in `DEVKIT_KEY_CLASSES` (StartBar: `(startbar-screenshot spare-test)`) |
+| `scripts/reload` | `bin/reload`. Link (StartBar), copy (StartDrive) and clone (StartAppImage) are found from the installed folder. The window names and what opens them are `reload_open` in `devkit.conf`; `DEVKIT_RELOAD_READY=state` for StartDrive |
+| `scripts/lint-qml.py`, `qmllint-check.js` (`npm run lint:qml`) | `bin/qmllint`, with the same baseline file. StartBar's JS version had no list of warnings that can never be baselined; this has |
+| `scripts/check.sh`, `lint-sh.sh`, `lint-rules.sh` | `bin/check`, with the app's own tests in `devkit_check` |
+
+Not moved: `screenshots.sh`, `preview.sh`, `make-preview.sh`, `clips.sh` and `hero.sh`. What they do is mostly the app's own (which windows, in which order, at which pixels, composed how), and the part that is common is a few lines of ImageMagick.
+
 ## Checking nothing broke
 
 Per app, before deleting the copy: on a branch, add the kit and the conf, remove the copied files, and compare.

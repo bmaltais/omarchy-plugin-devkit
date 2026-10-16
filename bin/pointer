@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# pointer: click what you can see in a screenshot. Drives the REAL pointer (ydotool + hyprctl), to try the live shell. For the
+# nested test session, which has a pointer of its own, use `dev click` instead.
+#
+#   pointer click PX PY [right]   click at pixel PX,PY of the FOCUSED monitor, as in a `grim -o` screenshot of it
+#   pointer move PX PY            put the pointer there (a hover fires), no click
+#   pointer pos                   where the pointer is, in the same pixels
+#   pointer warp X Y              like move, but X,Y are global layout coordinates (a second monitor starts at its x/y offset)
+#   pointer reveal                warp to the bottom edge of the monitor under the pointer and wait, so an auto-hidden bar rises
+#   pointer left | right          click where the pointer is, and say which windows are under it
+#   pointer key CODE:1 CODE:0 ... keys (ydotool codes), only while a throwaway window has focus: one whose class is listed in
+#                                 DEVKIT_KEY_CLASSES in devkit.conf (none by default, so keys are refused)
+#   pointer shot FILE [WxH+X+Y]   screenshot the monitor under the pointer, cropped to WxH+X+Y of that monitor if given
+#
+# PX,PY are the pixels you read off a screenshot of the focused monitor; this works out the monitor's place in the layout and its
+# scale, so no coordinate is ever halved or offset by hand. A click goes to whatever is under the pointer: look at a screenshot
+# first, because a click outside a window can close it. Needs ydotool and a writable /dev/uinput.
+set -euo pipefail
+
+case ${1:-} in -h | --help | "") sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//' >&2; exit 2 ;; esac
+DEVKIT_KEY_CLASSES=()
+# shellcheck source=../lib/config.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/config.sh"
+# The conf is optional here: the pointer works without an app, and only `key` reads it.
+if [[ -f ${DEVKIT_CONF:-${DEVKIT_APP_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/devkit.conf} ]]; then devkit_load_config || exit 1; fi
+
+for tool in ydotool hyprctl jq; do command -v "$tool" >/dev/null || { echo "pointer: $tool is not installed" >&2; exit 2; }; done
+export YDOTOOL_SOCKET="${XDG_RUNTIME_DIR:-/tmp}/.ydotool_socket"
+if [[ ! -S $YDOTOOL_SOCKET ]]; then
+  nohup ydotoold --socket-path="$YDOTOOL_SOCKET" --socket-own="$(id -u):$(id -g)" >/dev/null 2>&1 &
+  sleep 1
+fi
+
+read -r mx my scale < <(hyprctl monitors -j | jq -r '.[] | select(.focused) | "\(.x) \(.y) \(.scale)"')
+to_global() { awk -v m="$1" -v p="$2" -v s="$scale" 'BEGIN { printf "%d", m + p / s }'; }
+to_pixel() { awk -v g="$1" -v m="$2" -v s="$scale" 'BEGIN { printf "%d", (g - m) * s }'; }
+# cursor.move puts the pointer there but raises no hover; a 1 px nudge does.
+warp() { # X Y (global)
+  hyprctl dispatch "hl.dsp.cursor.move({ x = $1, y = $2 })" >/dev/null
+  ydotool mousemove -x 1 -y 0
+  ydotool mousemove -x -1 -y 0
+}
+warp_px() { warp "$(to_global "$mx" "$1")" "$(to_global "$my" "$2")"; } # PX PY (pixels of the focused monitor)
+need() { (($1 >= 3)) || { echo "usage: pointer $2" >&2; exit 2; }; } # ARGC USAGE
+cursor() { hyprctl -j cursorpos; }
+monitor_under_cursor() { # a jq filter over the monitor containing the cursor
+  hyprctl -j monitors | jq -r --argjson c "$(cursor)" ".[] | select(\$c.x >= .x and \$c.x < .x + .width and \$c.y >= .y and \$c.y < .y + .height) | $1"
+}
+
+case ${1:-} in
+  click)
+    need "$#" "click PX PY [right]"
+    warp_px "$2" "$3"
+    sleep 0.4
+    if [[ ${4:-} == right ]]; then ydotool click 0xC1 >/dev/null; else ydotool click 0xC0 >/dev/null; fi
+    echo "clicked $2,$3 on $(hyprctl monitors -j | jq -r '.[] | select(.focused) | .name')"
+    ;;
+  move) need "$#" "move PX PY"; warp_px "$2" "$3" ;;
+  warp) need "$#" "warp X Y"; warp "$2" "$3" ;;
+  pos)
+    read -r gx gy < <(cursor | jq -r '"\(.x) \(.y)"')
+    echo "$(to_pixel "$gx" "$mx"),$(to_pixel "$gy" "$my")"
+    ;;
+  reveal)
+    read -r rx ry rh < <(monitor_under_cursor '"\(.x) \(.y) \(.height)"')
+    warp "$rx" "$((ry + rh - 1))"
+    sleep 1
+    ;;
+  left | right)
+    under=$(hyprctl -j clients | jq -r --argjson c "$(cursor)" \
+      '[.[] | select(.mapped and $c.x >= .at[0] and $c.x < .at[0] + .size[0] and $c.y >= .at[1] and $c.y < .at[1] + .size[1]) | .class] | join(", ")')
+    echo "pointer: $1 click over windows: ${under:-none}" >&2
+    if [[ $1 == left ]]; then ydotool click 0xC0 >/dev/null; else ydotool click 0xC1 >/dev/null; fi
+    ;;
+  key)
+    shift
+    focused=$(hyprctl -j activewindow | jq -r '.class // ""')
+    for c in "${DEVKIT_KEY_CLASSES[@]}"; do
+      [[ $focused == "$c" ]] && { ydotool key "$@"; exit; }
+    done
+    echo "pointer: refusing to send keys to '$focused': focus a throwaway window first (DEVKIT_KEY_CLASSES in devkit.conf lists the classes allowed)" >&2
+    exit 1
+    ;;
+  shot)
+    [[ -n ${2:-} ]] || { echo "usage: pointer shot FILE [WxH+X+Y]" >&2; exit 2; }
+    grim -o "$(monitor_under_cursor .name)" "$2"
+    if [[ -n ${3:-} ]]; then magick "$2" -crop "$3" +repage "$2"; fi
+    ;;
+  *) echo "pointer: unknown command $1 (see --help)" >&2; exit 2 ;;
+esac

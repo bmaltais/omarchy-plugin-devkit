@@ -5,6 +5,10 @@ Test and record an [Omarchy](https://omarchy.org) shell plugin in a **second des
 - **`dev`**: start a nested Hyprland and Omarchy shell running your plugin from your checkout, then drive it: click, right-click, scroll, hover, type, screenshot, read what the plugin logged, reload after an edit. Nothing of yours is restarted, moved or changed.
 - **`tour`**: record a short animation (AVIF or GIF) of the plugin being used, with captions and a human-looking pointer, for a README or a marketplace page. The same session, filmed.
 - **`sheet`**: turn a recording into one contact sheet image, so you can check the whole of it at once.
+- **`reload`**: put your checkout in your REAL shell (a link, a copy or a git clone, whichever the plugin is installed as), restart it, open a window, and report what the plugin logged. For after `dev`.
+- **`pointer`**: click, hover and screenshot by the pixels of a screenshot, with your real pointer. For the live shell; `dev click` is the nested session's.
+- **`check`**: one command for the pre-commit hook: shell scripts (bash -n, shellcheck), `lint`, `qmllint`, the manifest, and the app's own steps.
+- **`qmllint`**: fail on any QML warning the app's baseline does not list (qmllint cannot see the shell's types, so hundreds are standing noise; a new one is a misspelt name).
 - **`lint`**: project rules for the scripts that drive it, each one a mistake that cost a session.
 
 It came out of three Omarchy plugins ([StartBar](https://github.com/bmaltais/StartBar), [StartDrive](https://github.com/bmaltais/StartDrive), [StartAppImage](https://github.com/bmaltais/StartAppImage)), which each had a copy and were tired of restarting their own shell, taking over their own pointer and filming a screen that had their windows on it.
@@ -47,7 +51,7 @@ The nested session shares your user's systemd, your login session and your syste
 
 ## Needs
 
-Hyprland (the 0.56 Lua API: `hl.dsp.*`, `hl.monitor`, `hl.device`) on Omarchy, run from inside your Hyprland session. `hyprctl`, `jq`, `grim`, `wtype`, `quickshell`, `dbus-run-session`, `perl`; and for the pointer client, built on first use: `gcc`, `wayland-scanner`, `pkg-config` with `wayland-client` (Arch: `wayland`, `wayland-protocols`, `gcc`). For `tour` and `sheet`: `ffmpeg` (with `drawtext`, and `libaom-av1` for AVIF), ImageMagick, `notify-send`. Each command checks and says what is missing.
+Hyprland (the 0.56 Lua API: `hl.dsp.*`, `hl.monitor`, `hl.device`) on Omarchy, run from inside your Hyprland session. `hyprctl`, `jq`, `grim`, `wtype`, `quickshell`, `dbus-run-session`, `perl`; and for the pointer client, built on first use: `gcc`, `wayland-scanner`, `pkg-config` with `wayland-client` (Arch: `wayland`, `wayland-protocols`, `gcc`). `reload` also needs `omarchy-shell` and `journalctl`; `pointer` needs `ydotool` and a writable `/dev/uinput`; `qmllint` needs `qt6-declarative`. For `tour` and `sheet`: `ffmpeg` (with `drawtext`, and `libaom-av1` for AVIF), ImageMagick, `notify-send`. Each command checks and says what is missing.
 
 ## Documents
 

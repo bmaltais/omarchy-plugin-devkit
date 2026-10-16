@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+# reload: run this checkout's code in your REAL Omarchy shell, and say what the plugin logs. (For trying a change first, out of reach
+# of your mouse and keyboard, use `dev`; this is for after, to see it on your own desktop.)
+#
+#   reload [WINDOW [ARG...]] [--shot FILE]
+#   reload --check
+#
+#   (nothing)      put this checkout in the shell's plugin folder (see below), restart the shell, report errors
+#   WINDOW ARG...  then open a window of the plugin: calls reload_open WINDOW ARG... from devkit.conf, which by default runs
+#                  `omarchy-shell PLUGIN-ID WINDOW ARG...`; it then checks that a layer in DEVKIT_LAYERS is up
+#   --shot FILE    then screenshot the focused monitor to FILE (the path is printed)
+#   --check        read-only: say whether the installed plugin matches this checkout, change nothing
+#
+# New QML only loads after a full shell restart (`omarchy plugin disable` and `enable`, and the shell's "Local plugin changed,
+# reloading" message, leave the old code running). How the checkout reaches the shell depends on how the plugin is installed, found
+# from ~/.config/omarchy/plugins/ID (or DEVKIT_RELOAD_MODE=link|copy|clone in devkit.conf):
+#
+#   link    the installed folder is a link to this checkout: nothing to copy. Refuses when it points elsewhere.
+#   copy    a plain folder (a plugin folder may not hold links the loader follows): what is on disk is copied over it, committed or
+#           not. The first time, the old one is kept in ~/.local/share/NAME-dev/plugin-before-reload. DEVKIT_RELOAD_EXCLUDE=(path ...)
+#           adds to what is left out (.git, tests, screenshots, node_modules, preview.png, docs, *.md and scripts/devkit are).
+#   clone   a git clone: this branch is fetched into it and fast-forwarded, so the change has to be pushed first.
+#
+# devkit.conf may set DEVKIT_RELOAD_READY=METHOD: the plugin's IPC method that answers once its service is loaded, waited for before a
+# window is opened. The bar blinks during the restart; nothing else is touched.
+#
+# Prints one line, then at most 8 error lines:
+#   reload ok human-input@5e69770 restart 6.1s qml-errors 0
+#     err: <a line the plugin logged, with the shell's usual noise removed>
+# Exits 1 on a sync or restart failure, a window that did not open, or any plugin error.
+set -euo pipefail
+
+# shellcheck source=../lib/config.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/config.sh"
+devkit_load_config || exit 1
+ID=$TOUR_PLUGIN_ID
+INSTALLED=$HOME/.config/omarchy/plugins/$ID
+window="" shot="" check=false
+args=()
+
+die() { echo "reload: $*" >&2; exit 1; }
+while (($#)); do
+  case $1 in
+    --shot) shot=${2:-}; [[ -n $shot ]] || die "--shot needs a file"; shift 2 ;;
+    --check) check=true; shift ;;
+    -h | --help) sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
+    -*) die "unknown option $1 (see --help)" ;;
+    *) if [[ -z $window ]]; then window=$1; else args+=("$1"); fi; shift ;;
+  esac
+done
+for tool in jq omarchy-shell journalctl hyprctl; do command -v "$tool" >/dev/null || die "$tool is not installed"; done
+
+# The default way to open a window; an app's devkit.conf may define its own (close first, check its arguments).
+if ! declare -F reload_open >/dev/null; then reload_open() { omarchy-shell "$ID" "$@" >/dev/null; }; fi
+
+branch=$(git -C "$REPO" branch --show-current)
+head=$(git -C "$REPO" rev-parse --short HEAD)
+# "+local" marks changes that are not committed. `if`, not `&&`: under set -e a clean tree must not exit here.
+dirty=$(git -C "$REPO" status --porcelain | wc -l)
+if ((dirty > 0)); then head+="+local"; fi
+
+mode=$DEVKIT_RELOAD_MODE
+if [[ $mode == auto ]]; then
+  if [[ -L $INSTALLED ]]; then mode="link"
+  elif [[ -e $INSTALLED/.git ]]; then mode="clone"
+  else mode="copy"; fi
+fi
+
+excludes=(--exclude=.git --exclude=tests --exclude=screenshots --exclude=node_modules --exclude=preview.png --exclude=scripts/devkit)
+for e in "${DEVKIT_RELOAD_EXCLUDE[@]}"; do excludes+=("--exclude=$e"); done
+copy_excludes=("${excludes[@]}" --exclude=docs --exclude='*.md')
+
+in_sync() {
+  case $mode in
+    link) [[ $(readlink -f "$INSTALLED" 2>/dev/null) == "$(readlink -f "$REPO")" ]] ;;
+    copy) diff -rq "${copy_excludes[@]}" "$REPO" "$INSTALLED" >/dev/null 2>&1 ;;
+    clone) [[ $(git -C "$INSTALLED" rev-parse --short HEAD 2>/dev/null) == "${head%+local}" ]] ;;
+  esac
+}
+
+case $mode in
+  link)
+    in_sync || die "$INSTALLED does not point at this checkout, so the shell would not load it. To point it here: ln -sfn \"$REPO\" \"$INSTALLED\""
+    ;;
+  clone)
+    [[ -d $INSTALLED ]] || die "the plugin is not installed at $INSTALLED"
+    # Sync only when the installed clone is not already at this commit, and never in --check.
+    if ! $check && ! in_sync; then
+      [[ -n $branch ]] || die "this checkout is on a detached HEAD"
+      git -C "$INSTALLED" fetch -q
+      git -C "$INSTALLED" checkout -q "$branch" 2>/dev/null || git -C "$INSTALLED" checkout -q -b "$branch" "origin/$branch" 2>/dev/null ||
+        die "the installed plugin cannot switch to $branch: push the branch first"
+      git -C "$INSTALLED" merge -q --ff-only "origin/$branch" 2>/dev/null || true
+    fi
+    ;;
+esac
+
+if $check; then
+  if in_sync; then echo "reload check: in sync ($mode), $branch@$head"
+  else echo "reload check: the installed plugin ($mode) differs from this checkout ($branch@$head)"; fi
+  if [[ $mode == clone ]] && ((dirty > 0)); then echo "reload check: $dirty uncommitted files here are not in any clone"; fi
+  in_sync; exit
+fi
+
+case $mode in
+  copy)
+    # The first time, keep what was installed, so there is a way back. Not beside it: the shell scans every folder in plugins/.
+    backup=$HOME/.local/share/$DEVKIT_NAME-dev/plugin-before-reload
+    [[ ! -e $INSTALLED || -e $backup ]] || { mkdir -p "$(dirname "$backup")"; cp -a "$INSTALLED" "$backup"; }
+    mkdir -p "$INSTALLED"
+    find "$INSTALLED" -mindepth 1 -delete
+    tar "${excludes[@]}" --exclude=docs -cf - -C "$REPO" . | tar -xf - -C "$INSTALLED"
+    ! find "$INSTALLED" -type l | grep -q . || die "the installed copy holds a symlink, which the plugin loader refuses"
+    ;;
+  clone)
+    in_sync || die "the installed plugin is at $(git -C "$INSTALLED" branch --show-current)@$(git -C "$INSTALLED" rev-parse --short HEAD), this checkout is at $branch@$head: push first"
+    if ((dirty > 0)); then echo "reload: note, $dirty uncommitted files here are not in the shell" >&2; fi
+    ;;
+esac
+
+since=$(date '+%Y-%m-%d %H:%M:%S')
+t0=$(date +%s.%N)
+if command -v omarchy-restart-shell >/dev/null; then restart=(omarchy-restart-shell); else restart=(omarchy restart shell); fi
+"${restart[@]}" >/dev/null 2>&1 || die "restarting the shell failed (${restart[*]})"
+up=false
+for _ in $(seq 1 60); do
+  [[ $(omarchy-shell shell ping 2>/dev/null) == ok ]] && { up=true; break; }
+  sleep 0.5
+done
+$up || die "the shell did not answer after the restart"
+sleep 2
+took=$(awk -v a="$t0" -v b="$(date +%s.%N)" 'BEGIN { printf "%.1f", b - a }')
+
+# The service loads a moment after the shell answers: wait until it does, so a window can be opened.
+if [[ -n ${DEVKIT_RELOAD_READY:-} ]]; then
+  for _ in $(seq 1 40); do
+    omarchy-shell "$ID" "$DEVKIT_RELOAD_READY" >/dev/null 2>&1 && break
+    sleep 0.5
+  done
+fi
+if command -v omarchy >/dev/null && ! omarchy plugin list 2>/dev/null | grep -F "$ID" | grep -q enabled; then
+  die "$ID is not enabled after the restart"
+fi
+
+opened=true
+if [[ -n $window ]]; then
+  reload_open "$window" "${args[@]}"
+  sleep 2
+  if ((${#DEVKIT_LAYERS[@]})); then
+    layers=$(hyprctl layers -j | jq -r '[.. | .namespace? // empty] | .[]')
+    opened=false
+    for l in "${DEVKIT_LAYERS[@]}"; do grep -qxF "$l" <<<"$layers" && opened=true; done
+  fi
+fi
+
+# What the plugin logged since the restart, without the shell's standing noise (the same filter as `dev errors`).
+noise='recursive rearrange|Local plugin changed|is outside of the config folder|qt\.svg|IpcHandler|ShellIpc|Handler was registered|qmlscanner|DEBUG|atspi|portal'
+[[ -z $DEVKIT_NOISE ]] || noise="$noise|$DEVKIT_NOISE"
+errors=$(journalctl --user --since "$since" --no-pager -o cat 2>/dev/null |
+  sed 's/\x1b\[[0-9;]*m//g' |
+  grep -F -e "$ID" |
+  grep -E "WARN|ERROR|ReferenceError|TypeError|Unable to assign|Cannot (assign|read|call)|is not a type|is not defined|failed|Read of" |
+  grep -vE "$noise" | sort -u || true)
+count=0
+[[ -z $errors ]] || count=$(wc -l <<<"$errors")
+
+state=ok
+{ ((count > 0)) || ! $opened; } && state=FAILED
+echo "reload $state $branch@$head restart ${took}s qml-errors $count${window:+ window $window $($opened && echo up || echo NOT-UP)}"
+if [[ -n $shot ]]; then
+  mon=$(hyprctl monitors -j | jq -r '.[] | select(.focused) | .name')
+  grim -o "$mon" "$shot" && echo "  shot $shot"
+fi
+if ((count > 0)); then head -8 <<<"$errors" | cut -c1-220 | sed 's/^/  err: /'; fi
+[[ $state == ok ]]

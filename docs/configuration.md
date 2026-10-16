@@ -30,6 +30,14 @@ DEVKIT_LAYERS=(omarchy-myplugin)
 | `DEVKIT_NOISE` | An extra regular expression: log lines matching it are not counted as the plugin's errors | none |
 | `DEVKIT_USAGE` | Text added to `dev --help`, for the commands the conf defines | none |
 
+| `DEVKIT_RELOAD_MODE` | How `reload` puts the checkout in the shell: `link`, `copy`, `clone` or `auto` (found from `~/.config/omarchy/plugins/ID`) | `auto` |
+| `DEVKIT_RELOAD_EXCLUDE=(path …)` | `reload` in `copy` mode leaves these out as well as `.git`, `tests`, `screenshots`, `node_modules`, `preview.png`, `docs`, `*.md`, `scripts/devkit` | none |
+| `DEVKIT_RELOAD_READY` | The plugin's IPC method that answers once its service is loaded (`state`): `reload` waits for it before opening a window | none |
+| `DEVKIT_KEY_CLASSES=(class …)` | Window classes `pointer key` may send keys to (throwaway test windows). Keys are refused to anything else | none |
+| `DEVKIT_SH_FILES=(path …)` | Shell files `check` lints besides `scripts/`, `tests/` and `.githooks/` | none |
+
+`qmllint` reads two environment variables, as it is Python: `DEVKIT_APP_ROOT` and `DEVKIT_QML_BASELINE` (default `scripts/qmllint-baseline.txt`).
+
 ## Hooks (functions in `devkit.conf`)
 
 | Hook | Called | Use it to |
@@ -38,6 +46,8 @@ DEVKIT_LAYERS=(omarchy-myplugin)
 | `devkit_window_up` | by `dev`, to ask whether the plugin's window is up | replace the `DEVKIT_LAYERS` check, for a window that is not a layer of its own. Helpers: `layer_mapped NS`, `nenv CMD…` (run a command in the session), `$ID` |
 | `tour_keys_ok` | by `tour`, before each key | the same, for the recorder: say whether the window is up so `typed`/`esc`/`pressed` may send keys. May call `layer_up NS` (the recorder's) or `hyprctl` |
 | `dev_cmd_NAME ARGS…` | `dev NAME ARGS…`, with the session known to be up | add a command: open a window, call the plugin's IPC. Helpers: `dev_window LABEL ARGS…` (calls `omarchy-shell ARGS` in the session, checks the window opened, says so), `nenv`, `$ID` |
+| `reload_open WINDOW ARG…` | by `reload`, to open a window of the plugin in the real shell | replace `omarchy-shell ID WINDOW ARG…` (close it first so a toggle cannot hide it, refuse an argument that is missing) |
+| `devkit_check` | by `check`, after its own steps | run the app's own tests with `step NAME COMMAND…` |
 | `tour_requires` | first, by `tour`, with your real home | check what the tour needs; print a reason and return non-zero if it is missing |
 
 In a hook running in `dev`: `nenv COMMAND…` runs a command in the session's environment (its home, its guard, its compositor), `$ID` is the plugin id, `$NEST_HOME` the session's home, `$NSIG`/`$NWD` its Hyprland signature and Wayland socket, `shell_up` asks whether its shell answers.

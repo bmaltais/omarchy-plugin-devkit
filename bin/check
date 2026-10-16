@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# check: every check that needs no running shell, for an app: its shell scripts (bash -n, shellcheck), the devkit's project rules
+# (bin/lint), QML warnings that are new (bin/qmllint), and the plugin manifest (omarchy plugin validate). The app adds its own tests in
+# devkit.conf, so one command and one pre-commit hook say whether it is fit to commit.
+#
+#   check
+#
+# devkit.conf may define devkit_check, called after the built-in steps, which runs the app's own with `step NAME COMMAND...`:
+#
+#   devkit_check() {
+#     step "CLI behaviour (tests/cli.sh)" tests/cli.sh
+#     step "model (node --test)" node --test
+#   }
+#
+# The shell scripts are every file under scripts/ (not the devkit's own) and tests/ that starts with a shell shebang or is named *.sh, plus
+# devkit.conf and .githooks/*; DEVKIT_SH_FILES=(path ...) in devkit.conf adds others. A missing tool skips its step and says so.
+# Exits 1 when a step failed.
+set -uo pipefail
+
+# shellcheck source=../lib/config.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/config.sh"
+case ${1:-} in -h | --help) sed -n '2,/^set -uo/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'; exit 0 ;; esac
+devkit_load_config || exit 1
+cd "$REPO" || exit 1
+export DEVKIT_APP_ROOT=$REPO
+kit=$DEVKIT/bin
+fail=0
+
+step() { # NAME COMMAND...
+  local name=$1; shift
+  if out=$("$@" 2>&1); then
+    printf '  ok    %s\n' "$name"
+  else
+    printf '  FAIL  %s\n' "$name"
+    printf '        %s\n' "${out//$'\n'/$'\n        '}"
+    fail=1
+  fi
+}
+skip() { printf '  skip  %s\n' "$1"; }
+
+shell_files() {
+  local f
+  {
+    for f in .githooks/*; do [[ -f $f ]] && echo "$f"; done
+    for f in "${DEVKIT_SH_FILES[@]}"; do [[ -f $f ]] && echo "$f"; done
+    # scripts/devkit is the submodule: its own tests and shellcheck are its business, not the app's.
+    find scripts tests -type f -not -path 'scripts/devkit/*' -not -path '*/node_modules/*' 2>/dev/null |
+      while read -r f; do
+        if [[ $f == *.sh ]] || head -n1 "$f" | grep -qE '^#!.*(bash|/sh)( |$)|^#!/usr/bin/env (bash|sh)'; then echo "$f"; fi
+      done
+  } | sort -u
+}
+lint_sh() {
+  local files
+  mapfile -t files < <(shell_files)
+  ((${#files[@]})) || return 0
+  local f
+  for f in "${files[@]}"; do bash -n "$f" || return 1; done
+  [[ ! -f devkit.conf ]] || bash -n devkit.conf || return 1
+  if command -v shellcheck >/dev/null; then
+    # devkit.conf sets variables the kit reads, which shellcheck sees as unused.
+    shellcheck -x -s bash "${files[@]}" && { [[ ! -f devkit.conf ]] || shellcheck -x -s bash -e SC2034 devkit.conf; }
+  else echo "shellcheck is not installed, only the syntax was checked"; fi
+}
+
+step "shell scripts (bash -n, shellcheck)" lint_sh
+step "project rules (the devkit's: detached launches, sandbox paths)" "$kit/lint" "$REPO"
+if compgen -G '*.qml' >/dev/null; then
+  if command -v qmllint >/dev/null || command -v qmllint6 >/dev/null || [[ -x /usr/lib/qt6/bin/qmllint ]]; then
+    step "QML (qmllint, new warnings only)" "$kit/qmllint"
+  else skip "QML (qmllint is not installed: qt6-declarative)"; fi
+fi
+if [[ -f manifest.json ]]; then
+  if command -v omarchy >/dev/null; then step "plugin manifest (omarchy plugin validate)" omarchy plugin validate .
+  else skip "plugin manifest (omarchy is not installed here)"; fi
+fi
+if declare -F devkit_check >/dev/null; then devkit_check; fi
+exit $fail
