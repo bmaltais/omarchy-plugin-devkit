@@ -8,7 +8,8 @@ name: App check
 #       with: { node: true }
 #
 # It checks out the app with its submodules and runs scripts/devkit/bin/check: shell scripts, the devkit's rules, and the app's own steps
-# (devkit_check in devkit.conf). The QML and manifest steps skip themselves where qmllint or omarchy are not installed, as on this runner.
+# (devkit_check in devkit.conf). The runner installs qmllint (qt6-declarative-dev-tools), so the QML step runs and a --no-verify commit cannot pass unnoticed.
+# The manifest step still skips itself where omarchy is not installed.
 on:
   workflow_call:
     inputs:
@@ -28,5 +29,5 @@ jobs:
         if: inputs.node
         with:
           node-version: 22
-      - run: sudo apt-get install -y shellcheck jq perl
+      - run: sudo apt-get install -y shellcheck jq perl qt6-declarative-dev-tools
       - run: scripts/devkit/bin/check

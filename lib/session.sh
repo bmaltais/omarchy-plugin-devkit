@@ -175,6 +175,8 @@ hl.config({
   general = { gaps_in = 0, gaps_out = 0, border_size = 0 },
   misc = { disable_hyprland_logo = true, disable_splash_rendering = true, force_default_wallpaper = 0, disable_watchdog_warning = true },
   animations = { enabled = false },
+  -- Omarchy turns this on; without it a togglesplit is undone, so tiled windows cannot be reshaped.
+  dwindle = { preserve_split = true },
 })
 hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1 })
 -- The host's mouse and keyboard reach this session as two devices of its Wayland backend. Switched off here, so nothing the

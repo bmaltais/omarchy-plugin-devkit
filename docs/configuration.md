@@ -67,3 +67,9 @@ Environment: `DEV_SIZE=WxH` (the session's screen, default 1280x800), `DEV_WATCH
 ## What a tour file sets
 
 A tour file is sourced by `tour` after `devkit.conf`, so it can override it (a tour can start the plugin from other settings than `dev` does). It sets `TOUR_OUT`, `TOUR_STEPS`, `TOUR_SIZE`, `TOUR_CROP`, `TOUR_MAX_SECONDS` and the rest of the table in [recording-tours.md](recording-tours.md#reference), and defines `tour_play`. `TOUR_DIR` is the folder the tour file is in, so a tour can `source "$TOUR_DIR/common.sh"` for what the app's tours share.
+
+## Test session differences from Omarchy
+
+- The session's `omarchy-bar` layer covers the whole 1280x800 output (`y 0, h 800`); on a real Omarchy desktop it is sized by its
+  exclusive zone. A plugin that finds the bar's edge from `hyprctl -j layers` must not rely on it in a test session.
+- dwindle's `preserve_split` is on, as in Omarchy, so `togglesplit` is not undone.
