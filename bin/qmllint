@@ -12,7 +12,7 @@ using a known name again adds nothing and a new name fails.
 The app is DEVKIT_APP_ROOT, else the git root of the folder this is run in. The baseline is scripts/qmllint-baseline.txt there, or
 the file DEVKIT_QML_BASELINE names (relative to the app).
 Some warnings are bugs, never noise: a property that shadows one of Item's own (`data`, `state`, `children`), an id that shadows
-a property, a property bound twice. They are not baselineable: they fail the check even when the baseline lists them, and
+a property, a property bound twice, an id used twice (it also stops qmllint's analysis early, hiding other warnings). They are not baselineable: they fail the check even when the baseline lists them, and
 --update refuses to write while one is present. (A property named `data` once got through a blind --update.)
 """
 import json
@@ -33,7 +33,7 @@ def app_root():
 root = app_root()
 baseline_path = root / os.environ.get("DEVKIT_QML_BASELINE", "scripts/qmllint-baseline.txt")
 files = sorted(p.name for p in root.glob("*.qml"))
-NEVER_BASELINE = {"property-override", "id-shadows-member", "duplicate-property-binding"}
+NEVER_BASELINE = {"property-override", "id-shadows-member", "duplicate-property-binding", "syntax.duplicate-ids", "duplicate-ids"}
 
 
 def find_qmllint():
