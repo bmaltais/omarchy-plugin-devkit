@@ -62,7 +62,7 @@ In a hook running in `dev`: `nenv COMMAND…` runs a command in the session's en
 
 `up`, `down`, `status`, `reload`, `watch`, `unwatch`, `ipc TARGET METHOD [ARGS]` (the plugin's IPC, in the session), `run CMD…`, `windows`, `set JSON`, `env`, `click`, `rclick`, `scroll`, `move`, `type`, `key`, `shot`, `errors`. `dev --help` lists them with your own.
 
-Environment: `DEV_SIZE=WxH` (the session's screen, default 1280x800), `DEV_WATCH=0` (no view window), `DEV_TTL=SECONDS` (it closes itself, default 1800), `DEV_QUIET=1` (no notes when the window is not up), `NEST_HOST_INPUT=1` (keep your mouse and keyboard on, for debugging the session by hand).
+Environment: `DEV_SIZE=WxH` (the session's screen, default 1280x800), `DEV_WATCH=0` (no view window), `DEV_WINDOW=1` (the session's own window stays on your screen; no far monitor, no view window), `DEV_TTL=SECONDS` (it closes itself, default 1800), `DEV_QUIET=1` (no notes when the window is not up), `NEST_HOST_INPUT=1` (keep your mouse and keyboard on, for debugging the session by hand).
 
 ## What a tour file sets
 

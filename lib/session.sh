@@ -260,9 +260,16 @@ nested_far_down() { real hyprctl output remove "$FAR_MON" >/dev/null 2>&1 || tru
 
 # The window goes to the far monitor at the session's own size, and the real keyboard goes back to what had it.
 nested_send_away() { # [PREVIOUS_FOCUS_ADDRESS]
-  real hyprctl dispatch "hl.dsp.window.resize({ x = $W, y = $H, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
-  real hyprctl dispatch "hl.dsp.window.move({ monitor = \"$FAR_MON\", window = \"address:$NEST_ADDR\" })" >/dev/null
-  real hyprctl dispatch "hl.dsp.window.move({ x = $FAR_X, y = 0, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
+  if [[ ${DEV_WINDOW:-0} == 1 ]]; then
+    # Kept on your screen: floating, at the session's size, in the middle (`dev up` with DEV_WINDOW=1).
+    real hyprctl dispatch "hl.dsp.window.float({ action = \"enable\", window = \"address:$NEST_ADDR\" })" >/dev/null
+    real hyprctl dispatch "hl.dsp.window.resize({ x = $W, y = $H, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
+    real hyprctl dispatch "hl.dsp.window.center({ window = \"address:$NEST_ADDR\" })" >/dev/null
+  else
+    real hyprctl dispatch "hl.dsp.window.resize({ x = $W, y = $H, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
+    real hyprctl dispatch "hl.dsp.window.move({ monitor = \"$FAR_MON\", window = \"address:$NEST_ADDR\" })" >/dev/null
+    real hyprctl dispatch "hl.dsp.window.move({ x = $FAR_X, y = 0, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
+  fi
   # The taskbar lists this window, and a click there asks the compositor to focus it, which moves the pointer onto a monitor nobody can
   # reach: the pointer disappears. A window that refuses focus cannot be clicked to there.
   real hyprctl dispatch "hl.dsp.window.set_prop({ prop = \"no_focus\", value = \"1\", window = \"address:$NEST_ADDR\" })" >/dev/null
