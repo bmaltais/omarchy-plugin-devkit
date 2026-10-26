@@ -272,7 +272,9 @@ nested_send_away() { # [PREVIOUS_FOCUS_ADDRESS]
   fi
   # The taskbar lists this window, and a click there asks the compositor to focus it, which moves the pointer onto a monitor nobody can
   # reach: the pointer disappears. A window that refuses focus cannot be clicked to there.
-  real hyprctl dispatch "hl.dsp.window.set_prop({ prop = \"no_focus\", value = \"1\", window = \"address:$NEST_ADDR\" })" >/dev/null
+  # (Kept on your screen, the window can be focused like any other, which is what lets you drag it with your usual move binding;
+  # your keyboard is still ignored by it, so a click on it only takes the focus away from your own window.)
+  [[ ${DEV_WINDOW:-0} == 1 ]] || real hyprctl dispatch "hl.dsp.window.set_prop({ prop = \"no_focus\", value = \"1\", window = \"address:$NEST_ADDR\" })" >/dev/null
   real hyprctl dispatch "hl.dsp.window.set_prop({ prop = \"no_follow_mouse\", value = \"1\", window = \"address:$NEST_ADDR\" })" >/dev/null
   [[ -n ${1:-} ]] && real hyprctl dispatch "hl.dsp.focus({ window = \"address:$1\" })" >/dev/null
   # The window has its final size: the session's shell may start now (see hypr.lua in nested_start).
