@@ -12,7 +12,7 @@ Test and record an [Omarchy](https://omarchy.org) shell plugin in a **second des
 - **`pre-commit`**: the git hook: refuse a commit on `main`, run `check`. `bin/pre-commit --install` writes `.githooks/pre-commit` and points git at it.
 - **`try-setting`**: try a setting on your real shell, run a command, put your `shell.json` back.
 - **`spare`**, **`hypr-events`**, **`release-branch`**: a throwaway window to test Hyprland calls on; a timestamped log of focus and window events; the open `release/<version>` branch.
-- **`.github/workflows/app-check.yml`**: a reusable GitHub workflow that runs `check` for an app (`uses: …/app-check.yml@v0.2.4`).
+- **`.github/workflows/app-check.yml`**: a reusable GitHub workflow that runs `check` for an app (`uses: …/app-check.yml@v0.2.5`).
 - **`lint`**: project rules for the scripts that drive it, each one a mistake that cost a session.
 
 It came out of three Omarchy plugins ([StartBar](https://github.com/bmaltais/StartBar), [StartDrive](https://github.com/bmaltais/StartDrive), [StartAppImage](https://github.com/bmaltais/StartAppImage)), which each had a copy and were tired of restarting their own shell, taking over their own pointer and filming a screen that had their windows on it.
@@ -72,6 +72,6 @@ One session at a time, one monitor, Hyprland only (a different Hyprland Lua API 
 
 ## Status
 
-0.2.4: docs only: ui-standards.md names the reference design and implementation and says where StartBar's settings window differs on purpose (no scrim, size, no first run). 0.2.2: adds docs/ui-standards.md, the UI standards every Start app shares. 0.2.1: `reload` no longer reports an app with a scripts/devkit submodule folder as out of sync in copy mode. 0.2.0: adds `reload`, `pointer`, `check`, `qmllint`, `pre-commit`, `try-setting`, `release-branch`, `spare`, `hypr-events` and a reusable `app-check` workflow, the scripts the three Start apps each carried. 0.1.x: the test session, recorder and guard, extracted from StartBar's copy; StartBar is on it, StartDrive and StartAppImage are next (docs/adopting.md).
+0.2.5: the nested window is floated before it is resized, so the recorder gets the session size it asked for on a tiled workspace (the resize is repeated until Hyprland has applied it), and its video pass trims odd sides. 0.2.4: docs only: ui-standards.md names the reference design and implementation and says where StartBar's settings window differs on purpose (no scrim, size, no first run). 0.2.2: adds docs/ui-standards.md, the UI standards every Start app shares. 0.2.1: `reload` no longer reports an app with a scripts/devkit submodule folder as out of sync in copy mode. 0.2.0: adds `reload`, `pointer`, `check`, `qmllint`, `pre-commit`, `try-setting`, `release-branch`, `spare`, `hypr-events` and a reusable `app-check` workflow, the scripts the three Start apps each carried. 0.1.x: the test session, recorder and guard, extracted from StartBar's copy; StartBar is on it, StartDrive and StartAppImage are next (docs/adopting.md).
 
 MIT licensed.

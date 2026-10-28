@@ -4,7 +4,7 @@ name: App check
 #
 #   jobs:
 #     check:
-#       uses: bmaltais/omarchy-plugin-devkit/.github/workflows/app-check.yml@v0.2.4
+#       uses: bmaltais/omarchy-plugin-devkit/.github/workflows/app-check.yml@v0.2.5
 #       with: { node: true }
 #
 # It checks out the app with its submodules and runs scripts/devkit/bin/check: shell scripts, the devkit's rules, and the app's own steps
