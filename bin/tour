@@ -470,7 +470,7 @@ for f in $frames; do
   prev=$f; prev_t=$t
 done
 printf "file '%s'\n" "$prev" >>"$TMP/frames.txt"
-ffmpeg -loglevel error -y -f concat -safe 0 -i "$TMP/frames.txt" -fps_mode vfr -c:v libx264 -pix_fmt yuv420p -crf 14 "$TMP/tour.mp4"
+ffmpeg -loglevel error -y -f concat -safe 0 -i "$TMP/frames.txt" -fps_mode vfr -vf "crop=trunc(iw/2)*2:trunc(ih/2)*2" -c:v libx264 -pix_fmt yuv420p -crf 14 "$TMP/tour.mp4"
 dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$TMP/tour.mp4")
 echo "tour: recorded $dur s"
 
