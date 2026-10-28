@@ -12,7 +12,7 @@ Test and record an [Omarchy](https://omarchy.org) shell plugin in a **second des
 - **`pre-commit`**: the git hook: refuse a commit on `main`, run `check`. `bin/pre-commit --install` writes `.githooks/pre-commit` and points git at it.
 - **`try-setting`**: try a setting on your real shell, run a command, put your `shell.json` back.
 - **`spare`**, **`hypr-events`**, **`release-branch`**: a throwaway window to test Hyprland calls on; a timestamped log of focus and window events; the open `release/<version>` branch.
-- **`.github/workflows/app-check.yml`**: a reusable GitHub workflow that runs `check` for an app (`uses: …/app-check.yml@v0.2.7`).
+- **`.github/workflows/app-check.yml`**: a reusable GitHub workflow that runs `check` for an app (`uses: …/app-check.yml@v0.2.8`).
 - **`lint`**: project rules for the scripts that drive it, each one a mistake that cost a session.
 
 It came out of three Omarchy plugins ([StartBar](https://github.com/bmaltais/StartBar), [StartDrive](https://github.com/bmaltais/StartDrive), [StartAppImage](https://github.com/bmaltais/StartAppImage)), which each had a copy and were tired of restarting their own shell, taking over their own pointer and filming a screen that had their windows on it.
@@ -74,5 +74,6 @@ One session at a time, one monitor, Hyprland only (a different Hyprland Lua API 
 
 0.2.6: test-session cleanup: a `dev up` that fails half way undoes itself, the time-limit watcher ends with its session instead of outliving `dev down` and ending a later one, and the compositor exit is never sent without the session's signature. 0.2.5: the nested window is floated before it is resized, so the recorder gets the session size it asked for on a tiled workspace (the resize is repeated until Hyprland has applied it), and its video pass trims odd sides. 0.2.4: docs only: ui-standards.md names the reference design and implementation and says where StartBar's settings window differs on purpose (no scrim, size, no first run). 0.2.2: adds docs/ui-standards.md, the UI standards every Start app shares. 0.2.1: `reload` no longer reports an app with a scripts/devkit submodule folder as out of sync in copy mode. 0.2.0: adds `reload`, `pointer`, `check`, `qmllint`, `pre-commit`, `try-setting`, `release-branch`, `spare`, `hypr-events` and a reusable `app-check` workflow, the scripts the three Start apps each carried. 0.1.x: the test session, recorder and guard, extracted from StartBar's copy; StartBar is on it, StartDrive and StartAppImage are next (docs/adopting.md).
 0.2.7: the ledger — a session writes down each thing it creates (far monitor, sandbox folder, nested compositor folder and socket) as it makes it, and `dev`/`tour` undo the list on every way out, including the next run after a crash; `DEV_WINDOW=1 dev up` keeps the session window on your screen; `qmllint` lists a warning with no id as `other` instead of crashing.
+0.2.8: the check runs in an Arch container with qmllint and quickshell installed, so the qmllint baseline made on an Omarchy machine holds in CI (Ubuntu's older Qt reported every baselined warning as new).
 
 MIT licensed.
