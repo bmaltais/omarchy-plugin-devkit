@@ -37,6 +37,10 @@
 # never put on your screen: while your pointer is over a nested compositor's window, that compositor chooses the cursor image
 # (hidden, a hand, a block), and moving or dropping it left a real pointer behaving oddly. Or just take a `dev shot`.
 #
+# Or watch the session's own window: `DEV_WINDOW=1 dev up` leaves it on your screen, floating at the session's size, instead of
+# on the far monitor with a view window. Your mouse and keyboard still cannot touch it (the nested compositor ignores them), but
+# the pointer is hidden while it is over the window, and the window can be covered or moved like any other.
+#
 # The session closes by itself after DEV_TTL seconds (default 1800), and a window closed by hand is cleaned up by the next `up`.
 # Pixels are those of the session's screen, 1280x800 unless DEV_SIZE=WxH says otherwise (a bigger one for sharper screenshots), 0,0 at the top-left: take a `dev shot`, read the pixel off it, click.
 # Every command prints one line, and exits non-zero when it did not do what it says. (DEV_QUIET=1 leaves out the notes a click or a key
@@ -115,8 +119,8 @@ cmd_up() {
   trap 'nest_pid=detached; nested_view_close; nested_stop; nested_far_down; ledger_release; rm -rf "$DEV"' EXIT
   local prev_focus
   prev_focus=$(hyprctl activewindow -j | jq -r '.address // empty')
-  # The far monitor first, so the window can be sent there the moment it exists.
-  nested_far_up
+  # The far monitor first, so the window can be sent there the moment it exists (DEV_WINDOW=1 keeps it on your screen).
+  [[ ${DEV_WINDOW:-0} == 1 ]] || nested_far_up
   sandbox_build || exit 1
   sandbox_enter
   NEST_DETACH=1 nested_start || exit 1
@@ -128,6 +132,10 @@ cmd_up() {
   # alone: once the state file is gone (dev down) or names another session, it ends at once, so it neither lingers for the TTL nor
   # ends a later session at the old one's deadline.
   setsid -f env DEV_WATCHER=1 DEVKIT_APP_ROOT="$REPO" bash -c 'for ((i = 0; i < $3 * 2; i++)); do [[ -s $1 ]] && break; grep -qx "NSIG=$5" "$4" 2>/dev/null || exit 0; sleep 0.5; done; exec "$2" down >/dev/null 2>&1' _ "$DEV/close" "$SELF" "$TTL" "$STATE" "$(printf %q "$NSIG")" >/dev/null 2>&1 </dev/null
+  if [[ ${DEV_WINDOW:-0} == 1 ]]; then
+    echo "dev up: session $NWD ${NW}x${NH}, its window on your screen (your mouse and keyboard cannot touch it; the pointer hides over it), closes in ${TTL}s; plugin errors so far: $(plugin_errors | wc -l)"
+    return 0
+  fi
   echo "dev up: session $NWD ${NW}x${NH} out of reach of your mouse and keyboard (look with dev shot), closes in ${TTL}s; plugin errors so far: $(plugin_errors | wc -l)"
   [[ ${DEV_WATCH:-1} == 0 ]] || cmd_watch
 }

@@ -280,11 +280,18 @@ nested_send_away() { # [PREVIOUS_FOCUS_ADDRESS]
     [[ $have == "${W}x${H}" ]] && break
     real hyprctl dispatch "hl.dsp.window.resize({ x = $W, y = $H, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
   done
-  real hyprctl dispatch "hl.dsp.window.move({ monitor = \"$FAR_MON\", window = \"address:$NEST_ADDR\" })" >/dev/null
-  real hyprctl dispatch "hl.dsp.window.move({ x = $FAR_X, y = 0, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
+  if [[ ${DEV_WINDOW:-0} == 1 ]]; then
+    # Kept on your screen (`dev up` with DEV_WINDOW=1): floating, at the session's size, in the middle.
+    real hyprctl dispatch "hl.dsp.window.center({ window = \"address:$NEST_ADDR\" })" >/dev/null
+  else
+    real hyprctl dispatch "hl.dsp.window.move({ monitor = \"$FAR_MON\", window = \"address:$NEST_ADDR\" })" >/dev/null
+    real hyprctl dispatch "hl.dsp.window.move({ x = $FAR_X, y = 0, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
+  fi
   # The taskbar lists this window, and a click there asks the compositor to focus it, which moves the pointer onto a monitor nobody can
   # reach: the pointer disappears. A window that refuses focus cannot be clicked to there.
-  real hyprctl dispatch "hl.dsp.window.set_prop({ prop = \"no_focus\", value = \"1\", window = \"address:$NEST_ADDR\" })" >/dev/null
+  # (Kept on your screen, the window can be focused like any other, which is what lets you drag it with your usual move binding;
+  # your keyboard is still ignored by it, so a click on it only takes the focus away from your own window.)
+  [[ ${DEV_WINDOW:-0} == 1 ]] || real hyprctl dispatch "hl.dsp.window.set_prop({ prop = \"no_focus\", value = \"1\", window = \"address:$NEST_ADDR\" })" >/dev/null
   real hyprctl dispatch "hl.dsp.window.set_prop({ prop = \"no_follow_mouse\", value = \"1\", window = \"address:$NEST_ADDR\" })" >/dev/null
   [[ -n ${1:-} ]] && real hyprctl dispatch "hl.dsp.focus({ window = \"address:$1\" })" >/dev/null
   # The window has its final size: the session's shell may start now (see hypr.lua in nested_start).
