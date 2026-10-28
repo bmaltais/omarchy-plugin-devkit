@@ -272,12 +272,15 @@ nested_send_away() { # [PREVIOUS_FOCUS_ADDRESS]
   real hyprctl dispatch "hl.dsp.window.float({ action = \"set\", window = \"address:$NEST_ADDR\" })" >/dev/null
   real hyprctl dispatch "hl.dsp.window.resize({ x = $W, y = $H, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
   # Hyprland may leave a floating window a pixel off what was asked (1280x801 for 1280x800), and an odd side makes the recorder's video
-  # encoder refuse the frames: ask again until the size is the one asked for.
-  local have i
-  for i in 1 2 3 4 5; do
+  # encoder refuse the frames: ask again until the size is the one asked for (or that plus one pixel, see below).
+  local have have_w have_h i
+  # (A window that has only just mapped can also come out much smaller than asked, once seen as 1276x690: so keep asking, for up to six seconds.)
+  for i in $(seq 1 15); do
     sleep 0.4
-    have=$(real hyprctl -j clients | jq -r --arg a "$NEST_ADDR" '.[] | select(.address == $a) | "\(.size[0])x\(.size[1])"')
-    [[ $have == "${W}x${H}" ]] && break
+    have=$(real hyprctl -j clients | jq -r --arg a "$NEST_ADDR" '.[] | select(.address == $a) | "\(.size[0]) \(.size[1])"')
+    # One pixel over is what Hyprland does and the recorder copes with (it crops to even sides); asking again does not change it.
+    read -r have_w have_h <<<"$have"
+    (( have_w == W && have_h >= H && have_h <= H + 1 )) && break
     real hyprctl dispatch "hl.dsp.window.resize({ x = $W, y = $H, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
   done
   if [[ ${DEV_WINDOW:-0} == 1 ]]; then
