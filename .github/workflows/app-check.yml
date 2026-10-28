@@ -8,7 +8,7 @@ name: App check
 #       with: { node: true }
 #
 # It checks out the app with its submodules and runs scripts/devkit/bin/check: shell scripts, the devkit's rules, and the app's own steps
-# (devkit_check in devkit.conf). The runner installs qmllint (qt6-declarative-dev-tools), so the QML step runs and a --no-verify commit cannot pass unnoticed.
+# (devkit_check in devkit.conf). It runs in an Arch container with qmllint and quickshell installed, so the QML step runs and a --no-verify commit cannot pass unnoticed.
 # The manifest step still skips itself where omarchy is not installed.
 on:
   workflow_call:
@@ -21,13 +21,13 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # Arch, like the Omarchy machines the baseline of qmllint warnings is made on: Ubuntu's older Qt words and numbers its warnings
+    # differently, so every one of them would look new. quickshell is installed so its modules resolve as they do there.
+    container: archlinux:latest
     steps:
+      - run: pacman -Syu --noconfirm git shellcheck jq perl python qt6-declarative quickshell ${{ inputs.node && 'nodejs npm' || '' }}
       - uses: actions/checkout@v4
         with:
           submodules: true
-      - uses: actions/setup-node@v4
-        if: inputs.node
-        with:
-          node-version: 22
-      - run: sudo apt-get install -y shellcheck jq perl qt6-declarative-dev-tools
+      - run: git config --global --add safe.directory '*'
       - run: scripts/devkit/bin/check
