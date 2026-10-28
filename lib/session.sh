@@ -260,7 +260,18 @@ nested_far_down() { real hyprctl output remove "$FAR_MON" >/dev/null 2>&1 || tru
 
 # The window goes to the far monitor at the session's own size, and the real keyboard goes back to what had it.
 nested_send_away() { # [PREVIOUS_FOCUS_ADDRESS]
+  # Float it first: a tiled window (on a workspace of tiled windows) ignores the resize, and the session's screen comes out as the tile's size.
+  real hyprctl dispatch "hl.dsp.window.float({ action = \"set\", window = \"address:$NEST_ADDR\" })" >/dev/null
   real hyprctl dispatch "hl.dsp.window.resize({ x = $W, y = $H, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
+  # Hyprland may leave a floating window a pixel off what was asked (1280x801 for 1280x800), and an odd side makes the recorder's video
+  # encoder refuse the frames: ask again until the size is the one asked for.
+  local have i
+  for i in 1 2 3 4 5; do
+    sleep 0.4
+    have=$(real hyprctl -j clients | jq -r --arg a "$NEST_ADDR" '.[] | select(.address == $a) | "\(.size[0])x\(.size[1])"')
+    [[ $have == "${W}x${H}" ]] && break
+    real hyprctl dispatch "hl.dsp.window.resize({ x = $W, y = $H, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
+  done
   real hyprctl dispatch "hl.dsp.window.move({ monitor = \"$FAR_MON\", window = \"address:$NEST_ADDR\" })" >/dev/null
   real hyprctl dispatch "hl.dsp.window.move({ x = $FAR_X, y = 0, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
   # The taskbar lists this window, and a click there asks the compositor to focus it, which moves the pointer onto a monitor nobody can
