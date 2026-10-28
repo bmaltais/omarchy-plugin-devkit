@@ -348,7 +348,8 @@ nested_stop() {
   # What runs inside goes first, then the compositor: a portal that loses its compositor crashes, and Omarchy tells you.
   nested_procs _nested_term || true
   sleep 1.5
-  env HYPRLAND_INSTANCE_SIGNATURE="$NSIG" hyprctl dispatch "hl.dsp.exit()" >/dev/null 2>&1 || true
+  # Never without the session's signature: hyprctl with none talks to YOUR compositor.
+  [[ -n $NSIG ]] && { env HYPRLAND_INSTANCE_SIGNATURE="$NSIG" hyprctl dispatch "hl.dsp.exit()" >/dev/null 2>&1 || true; }
   sleep 1.5
   [[ $nest_pid == detached ]] || kill "$nest_pid" 2>/dev/null || true
   nest_pid=""
