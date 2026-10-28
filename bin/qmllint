@@ -55,11 +55,13 @@ def current_entries(qmllint):
         name = pathlib.Path(f["filename"]).name
         source = (root / name).read_text(encoding="utf-8")
         for w in f["warnings"]:
-            if w["id"] == "unqualified":
+            # A warning qmllint gives no id (an import it cannot resolve, say) is listed under "other", so it shows as new and is read, not a crash.
+            wid = w.get("id") or "other"
+            if wid == "unqualified":
                 detail = source[w["charOffset"]:w["charOffset"] + w["length"]]
             else:
                 detail = w["message"]
-            entries.add("\t".join([name, w["id"], re.sub(r"\s+", " ", detail)]))
+            entries.add("\t".join([name, wid, re.sub(r"\s+", " ", detail)]))
     return sorted(entries)
 
 
