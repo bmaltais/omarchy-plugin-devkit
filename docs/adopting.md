@@ -6,8 +6,8 @@ For a new plugin: steps 1 to 4. For one of the three Start apps, which carry a c
 
 ```sh
 git submodule add https://github.com/OWNER/omarchy-plugin-devkit scripts/devkit
-git -C scripts/devkit checkout v0.2.8 && git add scripts/devkit
-git commit -m "Add scripts/devkit: omarchy-plugin-devkit v0.2.8"
+git -C scripts/devkit checkout v0.2.9 && git add scripts/devkit
+git commit -m "Add scripts/devkit: omarchy-plugin-devkit v0.2.9"
 # later, to update: git -C scripts/devkit fetch --tags && git -C scripts/devkit checkout vX.Y.Z && git add scripts/devkit && git commit
 ```
 
