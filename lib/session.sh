@@ -16,6 +16,9 @@
 
 DEVKIT_LIB=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
+# shellcheck source=ledger.sh
+source "$DEVKIT_LIB/ledger.sh"
+
 NEST=$TMP/nest
 NEST_HOME=$NEST/home
 NEST_BIN=$NEST/bin
@@ -50,6 +53,8 @@ nested_requires() {
 # data the tour file lists. Nothing here points back at your real files except read-only links.
 sandbox_build() {
   local h=$NEST_HOME rel
+  ledger_add dir "$NEST"
+  ledger_add sandbox "$NEST_HOME"
   mkdir -p "$h/.config/omarchy/plugins" "$h/.local/share" "$h/.local/state/omarchy" "$h/.cache" "$NEST_BIN"
   for rel in branding defaults extensions hooks themed themes; do
     [[ -e $HOME/.config/omarchy/$rel ]] && cp -a "$HOME/.config/omarchy/$rel" "$h/.config/omarchy/"
@@ -231,6 +236,8 @@ CONF
     [[ -n $sig && -n $sock ]] && break
     sleep 0.5
   done
+  ledger_add hypr "$sig"
+  ledger_add wl "$sock"
   [[ -n $sig && -n $sock ]] || { echo "tour: the nested session did not start (see $NEST/hypr.log)" >&2; return 1; }
   NSIG=$sig
   NWD=$sock
@@ -252,6 +259,7 @@ FAR_MON=${FAR_MON:-DEVTEST}
 FAR_X=${FAR_X:-20000}
 
 nested_far_up() {
+  ledger_add monitor "$FAR_MON"
   real hyprctl output create headless "$FAR_MON" >/dev/null
   real hyprctl eval "hl.monitor({ output = \"$FAR_MON\", mode = \"${W}x${H}@60\", position = \"${FAR_X}x0\", scale = 1 })" >/dev/null
   sleep 0.8

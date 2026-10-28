@@ -107,10 +107,12 @@ cmd_up() {
   fi
   nested_requires || exit 1
   [[ -n $orig_mon ]] || die "no focused monitor: run it from inside your Hyprland session"
+  ledger_reap none   # what an earlier session, or a start that was killed, left behind
   rm -rf "$DEV"; mkdir -p "$DEV"
+  ledger_start none
   # A start that fails half way (the window never appears, the shell does not come up) must not leave the far monitor, the nested
   # compositor or the view window behind: undo it all on the way out, until the session is recorded below.
-  trap 'nest_pid=detached; nested_view_close; nested_stop; nested_far_down; rm -rf "$DEV"' EXIT
+  trap 'nest_pid=detached; nested_view_close; nested_stop; nested_far_down; ledger_release; rm -rf "$DEV"' EXIT
   local prev_focus
   prev_focus=$(hyprctl activewindow -j | jq -r '.address // empty')
   # The far monitor first, so the window can be sent there the moment it exists.
@@ -120,7 +122,7 @@ cmd_up() {
   NEST_DETACH=1 nested_start || exit 1
   nested_send_away "$prev_focus"
   nested_wait_ready
-  { printf 'NSIG=%q\nNWD=%q\nNMON=%q\nNW=%q\nNH=%q\nNEST_ADDR=%q\n' "$NSIG" "$NWD" "$NMON" "$NW" "$NH" "$NEST_ADDR"; } >"$STATE"
+  { printf 'NSIG=%q\nNWD=%q\nNMON=%q\nNW=%q\nNH=%q\nNEST_ADDR=%q\nLEDGER=%q\n' "$NSIG" "$NWD" "$NMON" "$NW" "$NH" "$NEST_ADDR" "$LEDGER"; } >"$STATE"
   trap - EXIT   # the session is up: from here `dev down` (or the watcher below) ends it
   # Ends the session when its close file appears, or after DEV_TTL seconds: it must not be left running. It belongs to this session
   # alone: once the state file is gone (dev down) or names another session, it ends at once, so it neither lingers for the TTL nor
@@ -143,12 +145,13 @@ cmd_unwatch() {
 }
 
 cmd_down() {
-  [[ -s $STATE ]] || { hyprctl output remove "$FAR_MON" >/dev/null 2>&1 || true; echo "dev down: no session"; return 0; }
+  [[ -s $STATE ]] || { hyprctl output remove "$FAR_MON" >/dev/null 2>&1 || true; ledger_reap none; echo "dev down: no session"; return 0; }
   source "$STATE"
   nest_pid=detached
   nested_view_close
   nested_stop
   nested_far_down
+  ledger_release   # whatever the steps above missed
   rm -rf "$DEV"
   echo "dev down: session ended"
 }
