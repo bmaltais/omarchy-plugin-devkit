@@ -193,6 +193,7 @@ release() {
   rm -f "$TMP/view.live"
   nested_stop
   nested_far_down
+  ledger_release   # whatever the steps above missed
 }
 cleanup() {
   release
@@ -219,6 +220,8 @@ trap 'abort_reason="it ran past TOUR_MAX_SECONDS (${TOUR_MAX_SECONDS}s); nothing
 
 magick -size "${W}x${H}" "xc:$TOUR_BG" "$TMP/bg.png"
 # ---- a nested session on a far monitor, in a sandbox, shown in a view window ---------------------------
+ledger_reap   # sessions of earlier runs that were killed
+ledger_start
 prev_focus=$(hyprctl activewindow -j | jq -r '.address // empty')
 sandbox_build || exit 1
 sandbox_enter
@@ -470,7 +473,7 @@ for f in $frames; do
   prev=$f; prev_t=$t
 done
 printf "file '%s'\n" "$prev" >>"$TMP/frames.txt"
-ffmpeg -loglevel error -y -f concat -safe 0 -i "$TMP/frames.txt" -fps_mode vfr -c:v libx264 -pix_fmt yuv420p -crf 14 "$TMP/tour.mp4"
+ffmpeg -loglevel error -y -f concat -safe 0 -i "$TMP/frames.txt" -fps_mode vfr -vf "crop=trunc(iw/2)*2:trunc(ih/2)*2" -c:v libx264 -pix_fmt yuv420p -crf 14 "$TMP/tour.mp4"
 dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$TMP/tour.mp4")
 echo "tour: recorded $dur s"
 

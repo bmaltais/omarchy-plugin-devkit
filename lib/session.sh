@@ -16,6 +16,9 @@
 
 DEVKIT_LIB=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
+# shellcheck source=ledger.sh
+source "$DEVKIT_LIB/ledger.sh"
+
 NEST=$TMP/nest
 NEST_HOME=$NEST/home
 NEST_BIN=$NEST/bin
@@ -50,6 +53,8 @@ nested_requires() {
 # data the tour file lists. Nothing here points back at your real files except read-only links.
 sandbox_build() {
   local h=$NEST_HOME rel
+  ledger_add dir "$NEST"
+  ledger_add sandbox "$NEST_HOME"
   mkdir -p "$h/.config/omarchy/plugins" "$h/.local/share" "$h/.local/state/omarchy" "$h/.cache" "$NEST_BIN"
   for rel in branding defaults extensions hooks themed themes; do
     [[ -e $HOME/.config/omarchy/$rel ]] && cp -a "$HOME/.config/omarchy/$rel" "$h/.config/omarchy/"
@@ -231,6 +236,8 @@ CONF
     [[ -n $sig && -n $sock ]] && break
     sleep 0.5
   done
+  ledger_add hypr "$sig"
+  ledger_add wl "$sock"
   [[ -n $sig && -n $sock ]] || { echo "tour: the nested session did not start (see $NEST/hypr.log)" >&2; return 1; }
   NSIG=$sig
   NWD=$sock
@@ -252,6 +259,7 @@ FAR_MON=${FAR_MON:-DEVTEST}
 FAR_X=${FAR_X:-20000}
 
 nested_far_up() {
+  ledger_add monitor "$FAR_MON"
   real hyprctl output create headless "$FAR_MON" >/dev/null
   real hyprctl eval "hl.monitor({ output = \"$FAR_MON\", mode = \"${W}x${H}@60\", position = \"${FAR_X}x0\", scale = 1 })" >/dev/null
   sleep 0.8
@@ -260,13 +268,22 @@ nested_far_down() { real hyprctl output remove "$FAR_MON" >/dev/null 2>&1 || tru
 
 # The window goes to the far monitor at the session's own size, and the real keyboard goes back to what had it.
 nested_send_away() { # [PREVIOUS_FOCUS_ADDRESS]
-  if [[ ${DEV_WINDOW:-0} == 1 ]]; then
-    # Kept on your screen: floating, at the session's size, in the middle (`dev up` with DEV_WINDOW=1).
-    real hyprctl dispatch "hl.dsp.window.float({ action = \"enable\", window = \"address:$NEST_ADDR\" })" >/dev/null
+  # Float it first: a tiled window (on a workspace of tiled windows) ignores the resize, and the session's screen comes out as the tile's size.
+  real hyprctl dispatch "hl.dsp.window.float({ action = \"set\", window = \"address:$NEST_ADDR\" })" >/dev/null
+  real hyprctl dispatch "hl.dsp.window.resize({ x = $W, y = $H, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
+  # Hyprland may leave a floating window a pixel off what was asked (1280x801 for 1280x800), and an odd side makes the recorder's video
+  # encoder refuse the frames: ask again until the size is the one asked for.
+  local have i
+  for i in 1 2 3 4 5; do
+    sleep 0.4
+    have=$(real hyprctl -j clients | jq -r --arg a "$NEST_ADDR" '.[] | select(.address == $a) | "\(.size[0])x\(.size[1])"')
+    [[ $have == "${W}x${H}" ]] && break
     real hyprctl dispatch "hl.dsp.window.resize({ x = $W, y = $H, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
+  done
+  if [[ ${DEV_WINDOW:-0} == 1 ]]; then
+    # Kept on your screen (`dev up` with DEV_WINDOW=1): floating, at the session's size, in the middle.
     real hyprctl dispatch "hl.dsp.window.center({ window = \"address:$NEST_ADDR\" })" >/dev/null
   else
-    real hyprctl dispatch "hl.dsp.window.resize({ x = $W, y = $H, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
     real hyprctl dispatch "hl.dsp.window.move({ monitor = \"$FAR_MON\", window = \"address:$NEST_ADDR\" })" >/dev/null
     real hyprctl dispatch "hl.dsp.window.move({ x = $FAR_X, y = 0, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
   fi
@@ -346,7 +363,8 @@ nested_stop() {
   # What runs inside goes first, then the compositor: a portal that loses its compositor crashes, and Omarchy tells you.
   nested_procs _nested_term || true
   sleep 1.5
-  env HYPRLAND_INSTANCE_SIGNATURE="$NSIG" hyprctl dispatch "hl.dsp.exit()" >/dev/null 2>&1 || true
+  # Never without the session's signature: hyprctl with none talks to YOUR compositor.
+  [[ -n $NSIG ]] && { env HYPRLAND_INSTANCE_SIGNATURE="$NSIG" hyprctl dispatch "hl.dsp.exit()" >/dev/null 2>&1 || true; }
   sleep 1.5
   [[ $nest_pid == detached ]] || kill "$nest_pid" 2>/dev/null || true
   nest_pid=""
