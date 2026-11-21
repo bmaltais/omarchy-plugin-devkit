@@ -1,8 +1,8 @@
 # omarchy-plugin-devkit
 
-Test and record an [Omarchy](https://omarchy.org) shell plugin in a **second desktop that your mouse and keyboard cannot drive** (it is a window of your compositor, so starting and ending it still opens a window and moves your cursor once: see [how it works](docs/how-it-works.md#what-a-host-window-cannot-avoid)), with a guard that keeps a click inside it from acting on your machine.
+Test and record an [Omarchy](https://omarchy.org) shell plugin, or a standalone Wayland app, in a **second desktop that your mouse and keyboard cannot drive**, with a guard that keeps a click inside it from acting on your machine. A standalone app (`DEVKIT_APP_CMD`) runs by default on the **headless backend**: a sway with no window, monitor, focus or seat on your desktop, so nothing the session does is an event of your compositor and your pointer never moves. A plugin needs the Omarchy shell, so it runs in a nested Hyprland that is a window of yours, and starting and ending it still opens a window and moves your cursor once (see [how it works](docs/how-it-works.md#what-a-host-window-cannot-avoid)).
 
-- **`dev`**: start a nested Hyprland and Omarchy shell running your plugin from your checkout (or, in **app mode**, your standalone Wayland app's own command), then drive it: click, right-click, scroll, hover, type, screenshot, read what the plugin logged, reload after an edit. Nothing of yours is restarted or changed (the cursor warp when the session ends excepted).
+- **`dev`**: start a nested Hyprland and Omarchy shell running your plugin from your checkout (or, in **app mode**, your standalone Wayland app's own command in a headless sway), then drive it: click, right-click, scroll, hover, type, screenshot, read what the plugin logged, reload after an edit. Nothing of yours is restarted or changed (a plugin's nested Hyprland excepted: the cursor warp when the session ends). `dev selfcheck` proves the headless backend leaves your Hyprland alone.
 - **`tour`**: record a short animation (AVIF or GIF) of the plugin being used, with captions and a human-looking pointer, for a README or a marketplace page. The same session, filmed.
 - **`sheet`**: turn a recording into one contact sheet image, so you can check the whole of it at once.
 - **`reload`**: put your checkout in your REAL shell (a link, a copy or a git clone, whichever the plugin is installed as), restart it, open a window, and report what the plugin logged. For after `dev`.
@@ -12,7 +12,7 @@ Test and record an [Omarchy](https://omarchy.org) shell plugin in a **second des
 - **`pre-commit`**: the git hook: refuse a commit on `main`, run `check`. `bin/pre-commit --install` writes `.githooks/pre-commit` and points git at it.
 - **`try-setting`**: try a setting on your real shell, run a command, put your `shell.json` back.
 - **`spare`**, **`hypr-events`**, **`release-branch`**: a throwaway window to test Hyprland calls on; a timestamped log of focus and window events; the open `release/<version>` branch.
-- **`.github/workflows/app-check.yml`**: a reusable GitHub workflow that runs `check` for an app (`uses: …/app-check.yml@v0.3.1`).
+- **`.github/workflows/app-check.yml`**: a reusable GitHub workflow that runs `check` for an app (`uses: …/app-check.yml@v0.4.0`).
 - **`lint`**: project rules for the scripts that drive it, each one a mistake that cost a session.
 
 It came out of three Omarchy plugins ([StartBar](https://github.com/bmaltais/StartBar), [StartDrive](https://github.com/bmaltais/StartDrive), [StartAppImage](https://github.com/bmaltais/StartAppImage)), which each had a copy and were tired of restarting their own shell, taking over their own pointer and filming a screen that had their windows on it.
@@ -88,5 +88,7 @@ One session at a time, one monitor, Hyprland only (a different Hyprland Lua API 
 0.3.0: app mode: `DEVKIT_APP_CMD` in `devkit.conf` runs a standalone Wayland app (a Qt Quick app, say) in the session instead of the Omarchy shell and plugin; `dev` and `tour` drive it unchanged (docs/configuration.md#standalone-app).
 
 0.3.1: tests can never touch real input (a tripwire on `PATH`, a `ydotoold` count, `bin/pointer` refuses under `DEVKIT_NO_REAL_INPUT=1`); the session window is floated with `action = "on"` (`"set"` toggled and tiled it: the 819x492 bug), `dev up` fails unless the window and the nested monitor have the asked size, and `bin/lint` flags `action = "set"`; fewer cursor warps (a silent move, no focus hand-back, no view window unless `DEV_WATCH=1`); `vptr` and `wtype` refuse a socket that is not a nested compositor's; the docs no longer claim a host window is event-free.
+
+0.4.0: the headless backend: an app (`DEVKIT_APP_CMD`) runs by default in a headless sway (`DEVKIT_BACKEND=headless`) with no window, monitor, focus or seat on your desktop, in a private runtime folder, in software GL for Qt; `dev` (status, shot, click, move, scroll, type, key, errors, reload, down) and `tour` work against it, with the guard, the sandbox and the ledger as before; `dev selfcheck` watches your Hyprland read-only while a session runs and fails on any window, monitor, focus or workspace event. A plugin keeps the nested Hyprland (`DEVKIT_BACKEND=hyprland`, the only choice for it).
 
 MIT licensed.

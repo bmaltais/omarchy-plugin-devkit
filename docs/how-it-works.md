@@ -1,5 +1,7 @@
 # How it works, and what went wrong on the way
 
+There are two backends (`DEVKIT_BACKEND`, [configuration.md](configuration.md#backends)). The **hyprland** backend is the picture below: a nested Hyprland that is a window of your compositor, the only one that can run a plugin (the Omarchy shell needs Hyprland). The **headless** backend, the default for a standalone app, is [at the end of this page](#why-a-headless-backend): same sandbox, guard, input path and ledger, a different compositor.
+
 ```
 dev ──► lib/session.sh ──► Hyprland (nested) ──► quickshell: the Omarchy shell + your plugin
  │        (sandbox, guard, start, stop)    │ a window of your compositor, moved to a virtual monitor
@@ -29,8 +31,34 @@ The session's window is a window of your compositor, so it cannot be made free o
 - Its window opens (map, focus and workspace events), and `up` and `down` create and remove a monitor.
 - **Removing the far monitor always warps the real cursor.** Hyprland's `Monitor::onDisconnect` force-warps it and nothing turns that off. `down` therefore moves your cursor once.
 - `up` keeps the rest quiet: the window is moved to the far monitor with `follow = false` (the silent path; the default move focuses the window and warps the cursor to it), and focus is no longer handed back (that warped it again). The view window is off unless `DEV_WATCH=1` (it took the focus).
-- Only a headless backend, a nested compositor that is not a window of the host's, avoids all of this; it is planned, not built. Until then "your mouse and keyboard cannot reach it" means the session cannot be *driven* by them, not that starting and ending it leaves them alone.
+- Only a headless backend, a compositor that is not a window of the host's, avoids all of this: it is [built](#why-a-headless-backend), for apps. On this backend "your mouse and keyboard cannot reach it" means the session cannot be *driven* by them, not that starting and ending it leaves them alone.
 - The session's input never goes to your compositor: `vptr` (and `wtype`, through `vptr probe`) refuse a Wayland socket unless every output on it is named `HEADLESS-n` or `WAYLAND-n`, and refuse your own socket. `bin/pointer` (your real pointer, for the live shell) refuses under `dev`, `tour` and the tests (`DEVKIT_NO_REAL_INPUT=1`).
+
+## Why a headless backend
+
+An investigation of why the host-window session moved the owner's real pointer found a floor under everything the nested Hyprland does: **a window of your compositor can never be made event-free.** Its window maps and takes focus events; moving it to the far monitor and giving focus back each warped the cursor (`window.move` without `follow = false`, then `hl.dsp.focus`); and removing the far monitor force-warps in `Monitor::onDisconnect` whatever `cursor:no_warps` says. About three warps per `dev up` and `dev down`, and an agent that restarts the session in a loop gets dozens. The warps could be reduced, not removed.
+
+So for an app the session has no window of yours at all. It runs in **sway** (the wlroots compositor, 1.12 here) with `WLR_BACKENDS=headless`: one virtual output and no input device, created inside sway, with no connection to your compositor, your seat or your GPU:
+
+```
+dev ──► lib/session.sh ──► lib/headless.sh ──► dbus-run-session ─► sway -c nest/sway.conf   (private XDG_RUNTIME_DIR, HEADLESS-1)
+ │                                                                  └─ app-launch ─► your app (sandbox home, software GL)
+ ├─ click, move, rclick, scroll ► lib/vptr (wlr-virtual-pointer) on the session's socket
+ ├─ type, key ───────────► wtype (virtual-keyboard), on the session's socket
+ ├─ shot, tour frames ───► grim (wlr-screencopy), on the session's socket
+ └─ status, windows ─────► swaymsg -s the session's sway socket (get_tree, get_outputs)
+```
+
+- **Nothing of your desktop is in its environment.** sway is started with `env -u` for `WAYLAND_DISPLAY`, `DISPLAY`, `HYPRLAND_INSTANCE_SIGNATURE`, `HYPRLAND_CMD`, `SWAYSOCK` and the rest, `WLR_BACKENDS=headless`, `WLR_LIBINPUT_NO_DEVICES=1`, `WLR_RENDERER=pixman` and a private 0700 `XDG_RUNTIME_DIR` (`nest/rt` under the session's folder); `headless_assert_clean` checks the result and the session is not started otherwise. Its Wayland socket (`wayland-1`) and its IPC socket are in that folder, not in yours.
+- **Every client is given that socket by absolute path and the private runtime folder** (`nest_client`), so a socket that vanished is an error, never a fall back to yours. `vptr` also refuses (exit 3) unless `WAYLAND_DISPLAY` is inside the folder it is told (`DEVKIT_ONLY_SOCKET_UNDER`) and every output is named `HEADLESS-n` or `WAYLAND-n`. `swaymsg` is always given `-s` with the session's socket.
+- **sway implements what the input path needs unchanged:** `wlr-virtual-pointer`, `virtual-keyboard` and `wlr-screencopy`, so `vptr`, `wtype` and `grim` are the same programs as on the other backend. With no input device of its own the seat has a pointer or keyboard only while a `vptr` or `wtype` command runs, so the first key of `dev type` is held back 300 ms and a client may log that its pointer or keyboard left without entering (foot does; `dev errors` leaves that line out).
+- **Qt needs software GL.** The pixman renderer exports no dmabuf, so a GL client cannot use the GPU's driver; `LIBGL_ALWAYS_SOFTWARE=1` and the Mesa EGL vendor file make Mesa's llvmpipe draw into shared memory. It is slow but exact.
+- **The app starts once the screen has its size** (`swaymsg exec`, after the output is checked to be `HEADLESS-1` at `WxH`; a wrong size fails `dev up` before it writes its state), and is a child of sway with the sandbox home and the guard. A single tiled window with no borders or gaps fills the screen.
+- **The ledger** writes down the sway process (`sway PID`, ended only if the pid is still a sway) and the private runtime folder (`dir`), as it creates them; `dev down`, a failed start, Ctrl+C and the next run undo the list. There is no monitor and no instance folder to remove.
+- **The view window is not part of it**: it is a window on your desktop, so it is refused (`DEVKIT_BACKEND=hyprland`, or look with `dev shot`). The recorder draws no strip either.
+- **`dev selfcheck`** is the canary ([testing.md](testing.md#proving-your-desktop-sees-nothing-dev-selfcheck)).
+
+A plugin still needs the other backend: running Hyprland itself headless is not possible (aquamarine's headless backend has no allocator), and the Omarchy shell is Hyprland's.
 
 ## The guard
 

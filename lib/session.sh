@@ -12,6 +12,8 @@
 # App mode (DEVKIT_APP_MODE=1, set by lib/config.sh when devkit.conf has DEVKIT_APP_CMD): the same session, but its client is the app's own
 # command (a standalone Wayland app, Qt Quick say) instead of the Omarchy shell and plugin; see app_launcher_write.
 # Needs: Hyprland, dbus-run-session, wtype, gcc and wayland-scanner (to build the pointer client, once per run).
+# Backends (DEVKIT_BACKEND_RESOLVED, lib/config.sh): hyprland is all of the above; headless (an app's default) runs the app in a sway with no
+# window of yours at all (lib/headless.sh). Every function below that differs says so at its top (devkit_headless).
 # docs/how-it-works.md says how it works. What an app sets is in docs/configuration.md; the variables used here are TOUR_PLUGIN_ID,
 # TOUR_PLUGIN_ENTRY, TOUR_PLUGIN_WIDGET, TOUR_SANDBOX_COPY, TOUR_SANDBOX_LINK, DEVKIT_ENV, DEVKIT_GUARD_EXTRA, DEVKIT_NAME and the
 # hook devkit_sandbox. The caller sets TMP (a folder for the session), REPO (the app's checkout, linked in as the plugin), W and H.
@@ -20,6 +22,8 @@ DEVKIT_LIB=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 # shellcheck source=ledger.sh
 source "$DEVKIT_LIB/ledger.sh"
+# shellcheck source=headless.sh
+source "$DEVKIT_LIB/headless.sh"
 
 NEST=$TMP/nest
 NEST_HOME=$NEST/home
@@ -43,6 +47,7 @@ real() { env HYPRLAND_INSTANCE_SIGNATURE="$REAL_SIG" WAYLAND_DISPLAY="$REAL_WD" 
 
 nested_requires() {
   local tool
+  if devkit_headless; then headless_requires; return; fi
   for tool in Hyprland dbus-run-session wtype gcc wayland-scanner pkg-config; do
     command -v "$tool" >/dev/null || { echo "devkit: the session needs $tool" >&2; return 1; }
   done
@@ -67,6 +72,7 @@ app_command_path() {
 # Is a window of the app mapped in the session? DEVKIT_APP_CLASS and DEVKIT_APP_TITLE are regular expressions, on the window's class (or
 # initial class) and title; both empty means any mapped window.
 app_window_up() {
+  if devkit_headless; then headless_window_up; return; fi
   env HYPRLAND_INSTANCE_SIGNATURE="${NSIG:-}" hyprctl clients -j 2>/dev/null | jq -e --arg c "${DEVKIT_APP_CLASS:-}" --arg t "${DEVKIT_APP_TITLE:-}" \
     'any(.[]; .mapped and ((.class | test($c)) or (.initialClass | test($c))) and (.title | test($t)))' >/dev/null 2>&1
 }
@@ -85,6 +91,10 @@ app_launcher_write() {
     printf 'export NEST_APP=1 HOME=%q XDG_CONFIG_HOME=%q XDG_DATA_HOME=%q XDG_STATE_HOME=%q XDG_CACHE_HOME=%q\n' \
       "$NEST_HOME" "$NEST_HOME/.config" "$NEST_HOME/.local/share" "$NEST_HOME/.local/state" "$NEST_HOME/.cache"
     printf 'export PATH=%q:$PATH QT_QPA_PLATFORM=wayland GDK_BACKEND=wayland\n' "$GUARD"
+    # Headless sway renders with pixman: no dmabuf, so a GL client uses Mesa's software rasteriser (llvmpipe) over wl_shm.
+    if devkit_headless && [[ ${DEVKIT_SOFTWARE_GL:-1} == 1 ]]; then
+      printf 'export LIBGL_ALWAYS_SOFTWARE=1 __EGL_VENDOR_LIBRARY_FILENAMES=%q\n' "$(headless_mesa_egl)"
+    fi
     for kv in ${DEVKIT_ENV[@]+"${DEVKIT_ENV[@]}"} ${TOUR_APP_ENV[@]+"${TOUR_APP_ENV[@]}"}; do
       [[ $kv == [A-Za-z_]*=* ]] || { echo "devkit: DEVKIT_ENV/TOUR_APP_ENV entry '$kv' is not NAME=value" >&2; return 1; }
       printf 'export %q\n' "$kv"
@@ -245,7 +255,29 @@ sandbox_enter() {
   done
 }
 
+# The session's own D-Bus: one that starts nothing by itself (the usual one launches portals, file services and accessibility daemons that
+# this session does not need, and a portal that has no real display crashes).
+nested_dbus_conf_write() {
+  mkdir -p "$NEST/dbus-services"
+  cat >"$NEST/dbus.conf" <<CONF
+<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>session</type>
+  <listen>unix:tmpdir=/tmp</listen>
+  <auth>EXTERNAL</auth>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+  <servicedir>$NEST/dbus-services</servicedir>
+</busconfig>
+CONF
+}
+
 nested_start() {
+  if devkit_headless; then headless_start; return; fi
   local before_wins sig sock i addr started app_launch=""
   [[ ${DEVKIT_APP_MODE:-0} != 1 ]] || app_launch=$NEST_BIN/app-launch
   # The session is found by being created after this point, not by having a name that was absent before: its socket is called
@@ -283,24 +315,7 @@ hl.on("hyprland.start", function()
   hl.exec_cmd(wait .. "QS_DISABLE_FILE_WATCHER=1 QS_NO_RELOAD_POPUP=1 quickshell -n -p " .. (os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/shell >> " .. (os.getenv("NEST_QS_LOG") or "/dev/null") .. " 2>&1")
 end)
 LUA
-  # Its own D-Bus, and one that starts nothing by itself: the usual one launches portals, file services and
-  # accessibility daemons that this session does not need, and a portal that has no real display crashes.
-  mkdir -p "$NEST/dbus-services"
-  cat >"$NEST/dbus.conf" <<CONF
-<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
- "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
-<busconfig>
-  <type>session</type>
-  <listen>unix:tmpdir=/tmp</listen>
-  <auth>EXTERNAL</auth>
-  <policy context="default">
-    <allow send_destination="*" eavesdrop="true"/>
-    <allow eavesdrop="true"/>
-    <allow own="*"/>
-  </policy>
-  <servicedir>$NEST/dbus-services</servicedir>
-</busconfig>
-CONF
+  nested_dbus_conf_write
   : >"$NEST/qs.log"
   if [[ -n ${NEST_DETACH:-} ]]; then
     # A session that outlives this script (bin/dev): its own process group, found again by its environment, not a pid.
@@ -341,12 +356,13 @@ FAR_MON=${FAR_MON:-DEVTEST}
 FAR_X=${FAR_X:-20000}
 
 nested_far_up() {
+  devkit_headless && return 0
   ledger_add monitor "$FAR_MON"
   real hyprctl output create headless "$FAR_MON" >/dev/null
   real hyprctl eval "hl.monitor({ output = \"$FAR_MON\", mode = \"${W}x${H}@60\", position = \"${FAR_X}x0\", scale = 1 })" >/dev/null
   sleep 0.8
 }
-nested_far_down() { real hyprctl output remove "$FAR_MON" >/dev/null 2>&1 || true; }
+nested_far_down() { devkit_headless && return 0; real hyprctl output remove "$FAR_MON" >/dev/null 2>&1 || true; }
 
 # The session's window must be floating at WxH (one pixel over is accepted, see below) and the nested monitor must have that size: a
 # window that was tiled, or re-floated at another size, gives a session whose screen is the wrong size and every pixel a click names wrong.
@@ -369,6 +385,7 @@ nested_verify_size() {
 # The window goes to the far monitor at the session's own size. Nothing here asks for focus: follow = false is the silent move (the
 # default one focuses the window and warps the real cursor to it), and focus is not handed back (that warps the cursor again).
 nested_send_away() {
+  devkit_headless && return 0   # there is no window to move
   # Float it first: a tiled window (on a workspace of tiled windows) ignores the resize, and the session's screen comes out as the tile's size.
   # The action is "on", never "set": Hyprland's toggle parser knows only toggle/on/enable/off/disable, so "set" fell through to TOGGLE, which
   # TILED a window that already floated (a floating-mode Omarchy workspace), and Omarchy's workspace-modes hook then re-floated it at its own size.
@@ -412,6 +429,7 @@ procs_with() { local p; for p in /proc/[0-9]*; do p=${p#/proc/}; [[ $p != "$$" &
 # A view-only window on your screen showing the session five times a second (lib/dev-view.qml). Drag it, cover it, resize it: your
 # pointer is the normal arrow over it and nothing in it listens. The picture loop runs while the file LIVE_FILE is not empty.
 nested_view_open() { # LIVE_FILE
+  devkit_headless && { echo "devkit: the view window is a window on your desktop, which the headless backend has none of (DEVKIT_BACKEND=hyprland, or dev shot)" >&2; return 1; }
   local live=$1 frame=$NEST/frame.jpg addr="" i ws mx my mw mh
   [[ -z $(procs_with "NEST_VIEW=1") ]] || return 0
   WAYLAND_DISPLAY=$NWD grim -t jpeg -q 75 "$frame" || { echo "tour: grim could not capture the session" >&2; return 1; }
@@ -436,6 +454,11 @@ nested_view_close() { local p; for p in $(procs_with "NEST_VIEW=1"); do kill "$p
 
 nested_wait_ready() {
   local i
+  if devkit_headless; then
+    for i in $(seq 1 60); do headless_window_up && break; [[ -s $NEST/app.exit ]] && break; sleep 0.5; done
+    echo "tour: headless session $NSWAY on $NWD, $NMON ${NW}x${NH}" >&2
+    return 0
+  fi
   for i in $(seq 1 60); do
     if [[ ${DEVKIT_APP_MODE:-0} == 1 ]]; then
       # App mode: ready when the app has a window (or has died: dev up then says so).
@@ -450,7 +473,10 @@ nested_wait_ready() {
 }
 
 # From here on `hyprctl`, `omarchy-shell` and friends act on the nested session.
-nested_enter() { export WAYLAND_DISPLAY=$NWD HYPRLAND_INSTANCE_SIGNATURE=$NSIG; }
+nested_enter() {
+  if devkit_headless; then unset HYPRLAND_INSTANCE_SIGNATURE; export WAYLAND_DISPLAY=$NWD SWAYSOCK=$NSWAY; return; fi
+  export WAYLAND_DISPLAY=$NWD HYPRLAND_INSTANCE_SIGNATURE=$NSIG
+}
 
 # Calls "$1 PID COMMAND" for each process that carries the sandbox's XDG_CONFIG_HOME: everything the nested session
 # started (its compositor, shell, its own D-Bus, portals, file watchers). Mine alone: the check is the sandbox's path.
@@ -465,11 +491,12 @@ nested_procs() {
     fi
   done 2>/dev/null
 }
-_nested_term() { [[ $2 == Hyprland ]] || kill -TERM "$1" 2>/dev/null; }
+_nested_term() { [[ $2 == Hyprland || $2 == sway ]] || kill -TERM "$1" 2>/dev/null; }
 _nested_kill() { kill -KILL "$1" 2>/dev/null; }
 
 nested_stop() {
   [[ -n $nest_pid ]] || return 0
+  if devkit_headless; then headless_stop; return; fi
   # What runs inside goes first, then the compositor: a portal that loses its compositor crashes, and Omarchy tells you.
   nested_procs _nested_term || true
   sleep 1.5
@@ -487,7 +514,13 @@ nested_stop() {
 # ---- input: over the nested session's own socket --------------------------------------------------------
 # Every input to the session goes through vptr, which refuses unless the socket it is given belongs to a nested compositor (outputs named
 # WAYLAND-n or HEADLESS-n only) and is not your own (DEVKIT_HOST_WAYLAND_DISPLAY). `probe` is that check alone, run before wtype.
-vptr() { WAYLAND_DISPLAY=$NWD DEVKIT_HOST_WAYLAND_DISPLAY=$REAL_WD "$VPTR" "$@"; }
+# nest_client runs a program as a client of the session's socket and of no other: on the headless backend by absolute path, in its private
+# runtime dir (a lost socket is an error, never a fall back to yours), and vptr is told it must be under that dir.
+nest_client() {
+  if devkit_headless; then DEVKIT_ONLY_SOCKET_UNDER=$(headless_rt) headless_client "$@"
+  else env WAYLAND_DISPLAY="$NWD" DEVKIT_HOST_WAYLAND_DISPLAY="$REAL_WD" "$@"; fi
+}
+vptr() { nest_client "$VPTR" "$@"; }
 nest_probe() { vptr probe; }
 nest_at() { vptr move "$1" "$2" "$NW" "$NH"; }
 nest_click() { vptr click "$1" "$2" "$NW" "$NH"; }
@@ -495,5 +528,11 @@ nest_move() { vptr move "$1" "$2" "$NW" "$NH"; }
 nest_rclick() { vptr rclick "$1" "$2" "$NW" "$NH"; }
 nest_scroll() { vptr scroll "$1" "$2" "$NW" "$NH" "$3"; }
 nest_drag() { vptr drag "$gx" "$gy" "$NW" "$NH" "$1" "$2"; gx=$((gx + $1)); gy=$((gy + $2)); }
-nest_type() { nest_probe && WAYLAND_DISPLAY=$NWD wtype -d 45 -- "$1"; }
-nest_key() { nest_probe && WAYLAND_DISPLAY=$NWD wtype -k "$1"; }
+# wtype is a keyboard that exists for the length of the command. On the headless backend there is no other, so the client learns of the new
+# keyboard (and gives it the focus) a moment after wtype's first key: without a short wait first, that key is lost ("hello" typed as "ello").
+nest_wtype() { # wtype arguments...
+  nest_probe || return 1
+  if devkit_headless; then nest_client wtype -s "${DEVKIT_HEADLESS_KEY_WAIT:-300}" "$@"; else nest_client wtype "$@"; fi
+}
+nest_type() { nest_wtype -d 45 -- "$1"; }
+nest_key() { nest_wtype -k "$1"; }

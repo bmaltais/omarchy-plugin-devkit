@@ -13,6 +13,9 @@
 # sits on a virtual monitor out of reach of your pointer; you watch it in a view-only window on your screen, under a red
 # status strip with a Cancel recording button (Ctrl+C also cancels, and so does TOUR_MAX_SECONDS). When it ends, is
 # cancelled or fails, everything it started is stopped. See lib/session.sh.
+# An app (DEVKIT_APP_CMD) is filmed on the headless backend by default (DEVKIT_BACKEND, docs/configuration.md#backends): a sway with no
+# window, monitor or seat on your desktop, so none of the above (no far monitor, red strip or view window) happens, nothing touches your
+# cursor, progress goes to the terminal and Ctrl+C cancels. It then needs sway and swaymsg, and neither hyprctl nor quickshell.
 # Needs: hyprctl (Hyprland), jq, grim, ffmpeg (with drawtext), ImageMagick, quickshell, wtype, and gcc, wayland-scanner
 # and pkg-config with the Wayland client library (to build the pointer client).
 # docs/recording-tours.md is the guide.
@@ -104,10 +107,13 @@ if [[ -n $TOUR_CROP ]]; then
   # Even sides, as yuv420p needs.
   crop_vf="crop=$((crop_w / 2 * 2)):$((crop_h / 2 * 2)):${BASH_REMATCH[3]}:${BASH_REMATCH[4]},"
 fi
-for tool in hyprctl jq grim ffmpeg ffprobe magick quickshell notify-send; do
+# The headless backend (an app's default, lib/headless.sh) has no window of yours: no banner, view window or imv backdrop, so no Hyprland tools.
+tools=(jq grim ffmpeg ffprobe magick notify-send)
+devkit_headless || tools+=(hyprctl quickshell)
+for tool in "${tools[@]}"; do
   command -v "$tool" >/dev/null || { echo "tour: $tool is needed" >&2; exit 1; }
 done
-[[ ${TOUR_BACKDROP:-wallpaper} == plain ]] && ! command -v imv >/dev/null && { echo "tour: imv is needed for TOUR_BACKDROP=plain" >&2; exit 1; }
+[[ ${TOUR_BACKDROP:-wallpaper} == plain ]] && ! devkit_headless && ! command -v imv >/dev/null && { echo "tour: imv is needed for TOUR_BACKDROP=plain" >&2; exit 1; }
 if declare -F tour_requires >/dev/null; then tour_requires || exit 1; fi
 
 TMP=$(mktemp -d)
@@ -121,7 +127,8 @@ nested_requires || exit 1
 # in place, so it does not flicker.
 banner_qml="$DEVKIT/lib/tour-banner.qml"
 status="$TMP/status.txt"
-orig_mon=$(hyprctl monitors -j | jq -r '.[] | select(.focused) | .name')
+orig_mon=""
+devkit_headless || orig_mon=$(hyprctl monitors -j | jq -r '.[] | select(.focused) | .name')
 banner_pid=""
 guide="The pointer is driving a virtual screen and typing goes there."
 say() { # [STATE] TEXT: the step it is on. STATE is starting, encoding, cancelled or done; without one it is "recording"
@@ -139,6 +146,8 @@ real_xdg_state=${XDG_STATE_HOME:-$HOME/.local/state}
 real_xdg_cache=${XDG_CACHE_HOME:-$HOME/.cache}
 start_banner() {
   say starting "Starting the test session..."
+  # Headless: nothing is drawn on your desktop; progress goes to this terminal, and Ctrl+C is the cancel.
+  devkit_headless && return 0
   env HOME="$real_home" XDG_CONFIG_HOME="$real_xdg_config" XDG_DATA_HOME="$real_xdg_data" \
     XDG_STATE_HOME="$real_xdg_state" XDG_CACHE_HOME="$real_xdg_cache" \
     TOUR_TITLE=$TOUR_TITLE TOUR_SCREEN=$orig_mon TOUR_STATUS=$status TOUR_ANSWER="$TMP/cancel.txt" \
@@ -229,18 +238,19 @@ sandbox_build || exit 1
 sandbox_enter
 if declare -F tour_prepare >/dev/null; then tour_prepare || { echo "tour: tour_prepare failed" >&2; exit 1; }; fi
 FAR_MON=TOURTEST
+devkit_headless && DEVKIT_BG=$TOUR_BG   # the headless screen's background is the tour's, as TOUR_BACKDROP=plain puts over the wallpaper
 nested_far_up
 nested_start || exit 1
 nested_send_away || exit 1
 start_banner
 nested_wait_ready
 echo live >"$TMP/view.live"
-nested_view_open "$TMP/view.live" || exit 1
+devkit_headless || nested_view_open "$TMP/view.live" || exit 1
 nested_enter
 CAPMON=$NMON
 # The nested shell draws the theme's wallpaper, so it looks like a real Omarchy desktop. TOUR_BACKDROP=plain
 # puts the flat TOUR_BG colour over it instead.
-if [[ ${TOUR_BACKDROP:-wallpaper} == plain ]]; then
+if [[ ${TOUR_BACKDROP:-wallpaper} == plain ]] && ! devkit_headless; then
   imv -f "$TMP/bg.png" >/dev/null 2>&1 &
   bg_pid=$!
 fi
@@ -376,7 +386,7 @@ type_chars() { # TEXT SENDER... : the sender is called with each character
     prev=$c
   done
 }
-_wtype_one() { nest_probe && WAYLAND_DISPLAY=$NWD wtype -- "$1"; }
+_wtype_one() { nest_wtype -- "$1"; }
 # Keys and typing only while the app's window is up in the session: otherwise they would go to whatever else is there.
 layer_up() { # NAMESPACE: is a layer-shell surface of that namespace mapped in the session?
   hyprctl layers -j | jq -e --arg m "$CAPMON" --arg ns "$1" '.[$m] | [.. | .namespace? // empty] | any(. == $ns)' >/dev/null 2>&1
@@ -448,7 +458,7 @@ cap() {
   cap_hold=$(awk -v w="$(wc -w <<<"$1")" -v wpm="$READ_WPM" 'BEGIN { if (wpm <= 0) { print 0; exit } h = 0.95 + w * 60 / wpm; if (h < 2.5) h = 2.5; printf "%.2f", h }')
 }
 
-(while :; do grim -c -t jpeg -q 90 -o "$CAPMON" "$TMP/frames/$(date +%s%N).jpg"; done) &
+(while :; do nest_client grim -c -t jpeg -q 90 -o "$CAPMON" "$TMP/frames/$(date +%s%N).jpg"; done) &
 rec_pid=$!
 sleep 0.6
 say "Starting the tour"
