@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# dev: test an Omarchy plugin in a nested desktop that your mouse and keyboard cannot reach.
+# dev: test an Omarchy plugin, or a standalone Wayland app, in a nested desktop that your mouse and keyboard cannot reach.
+#
+# With DEVKIT_APP_CMD in devkit.conf (a standalone app, docs/configuration.md#standalone-app) the session's client is that command, not the
+# Omarchy shell and plugin: `up`, `down`, `status`, `reload` (restarts the app), `run`, `windows`, `env`, the input commands, `shot` and
+# `errors` (the app's stdout and stderr) work; `ipc` and `set` need the shell and say so.
 #
 #   dev up                      start the session: a second Hyprland and Omarchy shell, the app's checkout as the plugin, and the
 #                               view window on your screen (DEV_WATCH=0 for none; DEV_SIZE=WxH for another screen size)
@@ -69,6 +73,7 @@ gx=0; gy=0
 # shellcheck source=../lib/session.sh
 source "$DEVKIT/lib/session.sh"
 ID=$TOUR_PLUGIN_ID
+APP=$DEVKIT_APP_MODE
 
 die() { echo "dev: $*" >&2; exit 1; }
 usage() {
@@ -87,16 +92,28 @@ load() { [[ -s $STATE ]] || die "no session: run dev up"; source "$STATE"; neste
 layer_mapped() { HYPRLAND_INSTANCE_SIGNATURE=$NSIG hyprctl layers -j | jq -e --arg ns "$1" '[.. | .namespace? // empty] | any(. == $ns)' >/dev/null 2>&1; }
 overlay_up() {
   if declare -F devkit_window_up >/dev/null; then devkit_window_up; return; fi
+  if ((APP)); then app_window_up; return; fi
   local ns
   for ns in "${DEVKIT_LAYERS[@]:-}"; do [[ -n $ns ]] && layer_mapped "$ns" && return 0; done
   return 1
 }
-shell_up() { [[ $(nenv omarchy-shell shell ping 2>/dev/null) == ok ]]; }
+shell_up() { if ((APP)); then app_alive; else [[ $(nenv omarchy-shell shell ping 2>/dev/null) == ok ]]; fi; }
+need_shell() { ((! APP)) || die "$1 needs the Omarchy shell and a plugin: this app (DEVKIT_APP_CMD) runs on its own"; }
 wait_shell() { local i; for i in $(seq 1 60); do shell_up && return 0; sleep 0.5; done; return 1; }
 
 noise='recursive rearrange|Local plugin changed|qt\.svg|IpcHandler|ShellIpc|Handler was registered|qmlscanner|DEBUG|atspi|portal'
 [[ -z $DEVKIT_NOISE ]] || noise="$noise|$DEVKIT_NOISE"
-plugin_errors() { # prints the plugin's logged errors, one per line
+# App mode: the lines of the app's own log (stdout and stderr) that look like a problem, and how it ended if it did.
+app_errors() {
+  [[ -f $NEST/app.log ]] || return 0
+  sed 's/\x1b\[[0-9;]*m//g' "$NEST/app.log" |
+    grep -iE "warn|error|critical|fatal|fail|exception|ReferenceError|TypeError|Unable to assign|Cannot (assign|read|call)|is not a type|is not defined|Read of|segmentation|devkit: app exited" |
+    grep -vE "$app_noise" | sort -u || true
+}
+app_noise='atspi|portal|qt\.svg|DEBUG|requestActivate|propagateSizeHints|libdecor'
+[[ -z $DEVKIT_NOISE ]] || app_noise="$app_noise|$DEVKIT_NOISE"
+plugin_errors() { # prints the plugin's logged errors (the app's, in app mode), one per line
+  if ((APP)); then app_errors; return; fi
   [[ -f $NEST/qs.log ]] || return 0
   sed 's/\x1b\[[0-9;]*m//g' "$NEST/qs.log" |
     grep -F "$TOUR_PLUGIN_ID" |
@@ -133,11 +150,15 @@ cmd_up() {
   # ends a later session at the old one's deadline.
   setsid -f env DEV_WATCHER=1 DEVKIT_APP_ROOT="$REPO" bash -c 'for ((i = 0; i < $3 * 2; i++)); do [[ -s $1 ]] && break; grep -qx "NSIG=$5" "$4" 2>/dev/null || exit 0; sleep 0.5; done; exec "$2" down >/dev/null 2>&1' _ "$DEV/close" "$SELF" "$TTL" "$STATE" "$(printf %q "$NSIG")" >/dev/null 2>&1 </dev/null
   if [[ ${DEV_WINDOW:-0} == 1 ]]; then
-    echo "dev up: session $NWD ${NW}x${NH}, its window on your screen (your mouse and keyboard cannot touch it; the pointer hides over it), closes in ${TTL}s; plugin errors so far: $(plugin_errors | wc -l)"
+    echo "dev up: session $NWD ${NW}x${NH}, its window on your screen (your mouse and keyboard cannot touch it; the pointer hides over it), closes in ${TTL}s; $( ((APP)) && echo app || echo plugin) errors so far: $(plugin_errors | wc -l)"
     return 0
   fi
-  echo "dev up: session $NWD ${NW}x${NH} out of reach of your mouse and keyboard (look with dev shot), closes in ${TTL}s; plugin errors so far: $(plugin_errors | wc -l)"
+  echo "dev up: session $NWD ${NW}x${NH} out of reach of your mouse and keyboard (look with dev shot), closes in ${TTL}s; $( ((APP)) && echo app || echo plugin) errors so far: $(plugin_errors | wc -l)"
   [[ ${DEV_WATCH:-1} == 0 ]] || cmd_watch
+  if ((APP)) && ! app_window_up; then
+    echo "dev up: the app has no window yet ($( [[ -s $NEST/app.exit ]] && echo "it exited with status $(cat "$NEST/app.exit")" || echo "still starting, or DEVKIT_APP_CLASS/DEVKIT_APP_TITLE match nothing: dev windows")); see dev errors, or $NEST/app.log" >&2
+    exit 1
+  fi
 }
 
 cmd_watch() {
@@ -168,11 +189,42 @@ cmd_status() {
   [[ -s $STATE ]] || { echo "dev status: down"; return 1; }
   source "$STATE"
   nested_alive || { echo "dev status: the session is gone (dev up)"; return 1; }
+  if ((APP)); then
+    echo "dev status: up $NWD ${NW}x${NH} out-of-reach, app $(app_alive && echo running || echo "EXITED ($(cat "$NEST/app.exit" 2>/dev/null || echo unknown))"), window $(overlay_up && echo open || echo closed), app errors $(plugin_errors | wc -l), guard refused $(wc -l <"$NEST/guard.log" 2>/dev/null || echo 0)"
+    return 0
+  fi
   echo "dev status: up $NWD ${NW}x${NH} out-of-reach, shell $(shell_up && echo answering || echo NOT-ANSWERING), window $(overlay_up && echo open || echo closed), plugin errors $(plugin_errors | wc -l), guard refused $(wc -l <"$NEST/guard.log" 2>/dev/null || echo 0)"
+}
+
+# App mode: end the app and start it again from the launcher (the binary on disk, so a rebuild is picked up), in the environment the old one had.
+cmd_reload_app() {
+  local p env_file started took n i
+  p=$(app_procs | head -n1 || true)
+  # Its environment (the session's D-Bus address among it): the old app's, or the nested compositor's when the app is already gone.
+  [[ -n $p ]] || p=$(procs_with "XDG_CONFIG_HOME=$NEST_HOME/.config" | while read -r q; do [[ $(cat /proc/$q/comm 2>/dev/null) == Hyprland ]] && echo "$q"; done | head -n1 || true)
+  [[ -n $p ]] || die "the session's compositor is not running"
+  mapfile -d '' env_file </proc/"$p"/environ
+  env_file+=("WAYLAND_DISPLAY=$NWD" "HYPRLAND_INSTANCE_SIGNATURE=$NSIG")
+  app_launcher_write || die "could not write the app's launcher"
+  started=$(date +%s.%N)
+  for p in $(app_procs); do kill -TERM "$p" 2>/dev/null || true; done
+  for i in $(seq 1 20); do [[ -z $(app_procs) ]] && break; sleep 0.25; done
+  for p in $(app_procs); do kill -KILL "$p" 2>/dev/null || true; done
+  rm -f "$NEST/app.exit"; : >"$NEST/app.log"
+  setsid -f env -i "${env_file[@]}" "$NEST_BIN/app-launch" >/dev/null 2>&1 </dev/null
+  for i in $(seq 1 60); do app_window_up && break; [[ -s $NEST/app.exit ]] && break; sleep 0.5; done
+  sleep 1
+  took=$(awk -v a="$started" -v b="$(date +%s.%N)" 'BEGIN { printf "%.1f", b - a }')
+  n=$(plugin_errors | wc -l)
+  app_window_up || n=$((n + 1))
+  echo "dev reload $([[ $n -eq 0 ]] && echo ok || echo FAILED) app restarted in ${took}s (window $(app_window_up && echo up || echo "NOT up")) app-errors $n"
+  plugin_errors | head -8 | cut -c1-220 | sed 's/^/  err: /'
+  [[ $n -eq 0 ]]
 }
 
 cmd_reload() {
   load
+  if ((APP)); then cmd_reload_app; return; fi
   local p env_file started took n
   p=$(procs_with "XDG_CONFIG_HOME=$NEST_HOME/.config" | while read -r q; do [[ $(cat /proc/$q/comm 2>/dev/null) == quickshell ]] && echo "$q"; done | head -n1 || true)
   [[ -n $p ]] || die "the session's shell is not running"
@@ -204,6 +256,7 @@ dev_window() {
 
 cmd_ipc() { # TARGET METHOD [ARG...]
   load
+  need_shell "dev ipc"
   shell_up || die "the session's shell is not answering (dev reload)"
   [[ $# -ge 2 ]] || die "usage: dev ipc TARGET METHOD [ARG...]"
   nenv omarchy-shell "$@"
@@ -234,6 +287,7 @@ cmd_env() {
 
 cmd_set() { # JSON: merge into the plugin's entry in the session's shell.json
   load
+  need_shell "dev set"
   local cfg=$NEST_HOME/.config/omarchy/shell.json patch=${1:-}
   jq -e 'type == "object"' <<<"$patch" >/dev/null 2>&1 || die "usage: dev set JSON-OBJECT"
   jq --arg id "$ID" --argjson p "$patch" '(.plugins[] | select(.id == $id)) += $p' "$cfg" >"$cfg.new" && cat "$cfg.new" >"$cfg" && rm -f "$cfg.new"
@@ -297,7 +351,7 @@ case ${1:-} in
   *)
     if declare -F "dev_cmd_$1" >/dev/null; then
       load
-      shell_up || die "the session's shell is not answering (dev reload)"
+      shell_up || die "$( ((APP)) && echo "the app is not running" || echo "the session's shell is not answering") (dev reload)"
       cmd=dev_cmd_$1; shift; "$cmd" "$@"
     else
       die "unknown command $1 (dev --help)"

@@ -2,7 +2,7 @@
 
 Test and record an [Omarchy](https://omarchy.org) shell plugin in a **second desktop that your mouse and keyboard cannot reach**, with a guard that keeps a click inside it from acting on your machine.
 
-- **`dev`**: start a nested Hyprland and Omarchy shell running your plugin from your checkout, then drive it: click, right-click, scroll, hover, type, screenshot, read what the plugin logged, reload after an edit. Nothing of yours is restarted, moved or changed.
+- **`dev`**: start a nested Hyprland and Omarchy shell running your plugin from your checkout (or, in **app mode**, your standalone Wayland app's own command), then drive it: click, right-click, scroll, hover, type, screenshot, read what the plugin logged, reload after an edit. Nothing of yours is restarted, moved or changed.
 - **`tour`**: record a short animation (AVIF or GIF) of the plugin being used, with captions and a human-looking pointer, for a README or a marketplace page. The same session, filmed.
 - **`sheet`**: turn a recording into one contact sheet image, so you can check the whole of it at once.
 - **`reload`**: put your checkout in your REAL shell (a link, a copy or a git clone, whichever the plugin is installed as), restart it, open a window, and report what the plugin logged. For after `dev`.
@@ -12,7 +12,7 @@ Test and record an [Omarchy](https://omarchy.org) shell plugin in a **second des
 - **`pre-commit`**: the git hook: refuse a commit on `main`, run `check`. `bin/pre-commit --install` writes `.githooks/pre-commit` and points git at it.
 - **`try-setting`**: try a setting on your real shell, run a command, put your `shell.json` back.
 - **`spare`**, **`hypr-events`**, **`release-branch`**: a throwaway window to test Hyprland calls on; a timestamped log of focus and window events; the open `release/<version>` branch.
-- **`.github/workflows/app-check.yml`**: a reusable GitHub workflow that runs `check` for an app (`uses: …/app-check.yml@v0.2.9`).
+- **`.github/workflows/app-check.yml`**: a reusable GitHub workflow that runs `check` for an app (`uses: …/app-check.yml@v0.3.0`).
 - **`lint`**: project rules for the scripts that drive it, each one a mistake that cost a session.
 
 It came out of three Omarchy plugins ([StartBar](https://github.com/bmaltais/StartBar), [StartDrive](https://github.com/bmaltais/StartDrive), [StartAppImage](https://github.com/bmaltais/StartAppImage)), which each had a copy and were tired of restarting their own shell, taking over their own pointer and filming a screen that had their windows on it.
@@ -53,6 +53,15 @@ The nested session shares your user's systemd, your login session and your syste
 
 `examples/hello` is a complete small plugin with a `devkit.conf`, wrappers and a tour: `cd examples/hello && ./dev up && ./dev open && ./tour tours/hello.sh`.
 
+**A standalone app instead of a plugin** (a Qt Quick binary, a terminal, anything that opens a Wayland window): replace `TOUR_PLUGIN_ID` with the command to run, and the same `dev` and `tour` drive it.
+
+```bash
+DEVKIT_APP_CMD=(build/myapp)    # run in the session instead of the Omarchy shell
+DEVKIT_APP_CLASS=myapp          # the window's class, so the kit knows when it is up
+```
+
+`examples/standalone-app` is a runnable one (a terminal as the app): `cd examples/standalone-app && ./dev up && ./dev shot /tmp/a.png`. See [configuration.md](docs/configuration.md#standalone-app).
+
 ## Needs
 
 Hyprland (the 0.56 Lua API: `hl.dsp.*`, `hl.monitor`, `hl.device`) on Omarchy, run from inside your Hyprland session. `hyprctl`, `jq`, `grim`, `wtype`, `quickshell`, `dbus-run-session`, `perl`; and for the pointer client, built on first use: `gcc`, `wayland-scanner`, `pkg-config` with `wayland-client` (Arch: `wayland`, `wayland-protocols`, `gcc`). `reload` also needs `omarchy-shell` and `journalctl`; `pointer` needs `ydotool` and a writable `/dev/uinput`; `qmllint` needs `qt6-declarative`. For `tour` and `sheet`: `ffmpeg` (with `drawtext`, and `libaom-av1` for AVIF), ImageMagick, `notify-send`. Each command checks and says what is missing.
@@ -68,7 +77,7 @@ Hyprland (the 0.56 Lua API: `hl.dsp.*`, `hl.monitor`, `hl.device`) on Omarchy, r
 
 ## Limits
 
-One session at a time, one monitor, Hyprland only (a different Hyprland Lua API will need changes in `lib/session.sh`), and an Omarchy shell is assumed (`omarchy-shell`, its config layout).
+One session at a time, one monitor, Hyprland only (a different Hyprland Lua API will need changes in `lib/session.sh`), and an Omarchy shell is assumed in plugin mode (`omarchy-shell`, its config layout); app mode needs none.
 
 ## Status
 
@@ -76,5 +85,6 @@ One session at a time, one monitor, Hyprland only (a different Hyprland Lua API 
 0.2.7: the ledger — a session writes down each thing it creates (far monitor, sandbox folder, nested compositor folder and socket) as it makes it, and `dev`/`tour` undo the list on every way out, including the next run after a crash; `DEV_WINDOW=1 dev up` keeps the session window on your screen; `qmllint` lists a warning with no id as `other` instead of crashing.
 0.2.8: the check runs in an Arch container with qmllint and quickshell installed, so the qmllint baseline made on an Omarchy machine holds in CI (Ubuntu's older Qt reported every baselined warning as new).
 0.2.9: the test session asks for its window size for six seconds (not two) and accepts one pixel over, so a window that maps late no longer comes out too small for the recorder to crop.
+0.3.0: app mode: `DEVKIT_APP_CMD` in `devkit.conf` runs a standalone Wayland app (a Qt Quick app, say) in the session instead of the Omarchy shell and plugin; `dev` and `tour` drive it unchanged (docs/configuration.md#standalone-app).
 
 MIT licensed.

@@ -31,7 +31,9 @@
 #     TOUR_CROP          WxH+X+Y: keep only this box of the screen, for a short clip of one window (default: the whole
 #                        screen). Captions are drawn in the box; the result is as wide as the box unless TOUR_GIF_WIDTH says
 #     TOUR_BG            with TOUR_BACKDROP=plain, the backdrop colour  (default #262a36)
-#     TOUR_PLUGIN_ID     the plugin's id, to load in the sandbox                                       (required)
+#     TOUR_PLUGIN_ID     the plugin's id, to load in the sandbox            (required, unless devkit.conf sets DEVKIT_APP_CMD: then
+#                        the session runs that standalone app instead, see docs/configuration.md#standalone-app; typed, esc and
+#                        pressed send keys while the app has a window)
 #     TOUR_PLUGIN_ENTRY  a JSON object merged into the plugin's entry in the sandbox's shell.json: the settings the session
 #                        starts with, e.g. '{"colorScheme":"dark"}'                                    (default none)
 #     TOUR_PLUGIN_WIDGET 0 for a plugin with no bar widget (a service): it is loaded but not put on the bar     (default 1)
@@ -383,6 +385,7 @@ layer_up() { # NAMESPACE: is a layer-shell surface of that namespace mapped in t
 # tour_keys_ok instead, and says by its own means whether the window is up.
 overlay_up() {
   if declare -F tour_keys_ok >/dev/null; then tour_keys_ok; return; fi
+  if [[ $DEVKIT_APP_MODE == 1 ]]; then app_window_up; return; fi
   local ns
   for ns in "$TOUR_LAYER" "${DEVKIT_LAYERS[@]:-}"; do [[ -n $ns ]] && layer_up "$ns" && return 0; done
   return 1

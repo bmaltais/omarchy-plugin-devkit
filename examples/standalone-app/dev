@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# This app's `dev`: the devkit's, run for this checkout (see examples/hello/dev).
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+export DEVKIT_APP_ROOT=$here
+exec "$here/../../bin/dev" "$@"
