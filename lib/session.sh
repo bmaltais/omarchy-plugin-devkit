@@ -9,6 +9,8 @@
 #     nothing the tour does moves your pointer or types into your windows;
 #   - the tour changes only the sandbox: your real settings, apps and files are not touched, so there is nothing
 #     to put back.
+# App mode (DEVKIT_APP_MODE=1, set by lib/config.sh when devkit.conf has DEVKIT_APP_CMD): the same session, but its client is the app's own
+# command (a standalone Wayland app, Qt Quick say) instead of the Omarchy shell and plugin; see app_launcher_write.
 # Needs: Hyprland, dbus-run-session, wtype, gcc and wayland-scanner (to build the pointer client, once per run).
 # docs/how-it-works.md says how it works. What an app sets is in docs/configuration.md; the variables used here are TOUR_PLUGIN_ID,
 # TOUR_PLUGIN_ENTRY, TOUR_PLUGIN_WIDGET, TOUR_SANDBOX_COPY, TOUR_SANDBOX_LINK, DEVKIT_ENV, DEVKIT_GUARD_EXTRA, DEVKIT_NAME and the
@@ -45,7 +47,55 @@ nested_requires() {
     command -v "$tool" >/dev/null || { echo "devkit: the session needs $tool" >&2; return 1; }
   done
   [[ -n $REAL_SIG && -n $REAL_WD ]] || { echo "devkit: this must run inside your Hyprland session" >&2; return 1; }
-  [[ -n ${TOUR_PLUGIN_ID:-} ]] || { echo "devkit: TOUR_PLUGIN_ID is not set (devkit.conf in the app's root: the plugin to load in the sandbox)" >&2; return 1; }
+  if [[ ${DEVKIT_APP_MODE:-0} == 1 ]]; then
+    app_command_path >/dev/null || { echo "devkit: DEVKIT_APP_CMD: cannot find an executable '${DEVKIT_APP_CMD[0]}' (build the app, or fix devkit.conf)" >&2; return 1; }
+  else
+    [[ -n ${TOUR_PLUGIN_ID:-} ]] || { echo "devkit: TOUR_PLUGIN_ID is not set (devkit.conf in the app's root: the plugin to load in the sandbox)" >&2; return 1; }
+  fi
+}
+
+# ---- app mode -----------------------------------------------------------------------------------------------
+# The app's working directory: DEVKIT_APP_CWD (relative to the app's checkout), else the checkout.
+app_cwd() { local d=${DEVKIT_APP_CWD:-$REPO}; [[ $d == /* ]] || d=$REPO/$d; echo "$d"; }
+# The app's program as an absolute path: a bare name is looked for on PATH, a relative path from the app's checkout.
+app_command_path() {
+  local c=${DEVKIT_APP_CMD[0]:-} p
+  [[ -n $c ]] || return 1
+  if [[ $c == */* ]]; then p=$c; [[ $p == /* ]] || p=$REPO/$p; [[ -f $p && -x $p ]] || return 1; echo "$p"
+  else p=$(command -v "$c") && [[ -x $p ]] && echo "$p"; fi
+}
+# Is a window of the app mapped in the session? DEVKIT_APP_CLASS and DEVKIT_APP_TITLE are regular expressions, on the window's class (or
+# initial class) and title; both empty means any mapped window.
+app_window_up() {
+  env HYPRLAND_INSTANCE_SIGNATURE="${NSIG:-}" hyprctl clients -j 2>/dev/null | jq -e --arg c "${DEVKIT_APP_CLASS:-}" --arg t "${DEVKIT_APP_TITLE:-}" \
+    'any(.[]; .mapped and ((.class | test($c)) or (.initialClass | test($c))) and (.title | test($t)))' >/dev/null 2>&1
+}
+# The processes of the app (its launcher and the app itself), found by the NEST_APP=1 they carry.
+app_procs() { procs_with "NEST_APP=1"; }
+app_alive() { [[ -n $(app_procs) && ! -s $NEST/app.exit ]]; }
+# Writes $NEST_BIN/app-launch: what the session runs as its client. It sets the app's environment (the sandbox's XDG dirs, the Wayland
+# platform, then TOUR_APP_ENV, which may override any of it), starts the command in its working directory with stdout and stderr in
+# $NEST/app.log, and records how it ended in app.exit and the log.
+app_launcher_write() {
+  local f=$NEST_BIN/app-launch kv
+  mkdir -p "$NEST_BIN"
+  : >"$NEST/app.log"
+  {
+    printf '#!/bin/bash\n'
+    printf 'export NEST_APP=1 HOME=%q XDG_CONFIG_HOME=%q XDG_DATA_HOME=%q XDG_STATE_HOME=%q XDG_CACHE_HOME=%q\n' \
+      "$NEST_HOME" "$NEST_HOME/.config" "$NEST_HOME/.local/share" "$NEST_HOME/.local/state" "$NEST_HOME/.cache"
+    printf 'export PATH=%q:$PATH QT_QPA_PLATFORM=wayland GDK_BACKEND=wayland\n' "$GUARD"
+    for kv in ${DEVKIT_ENV[@]+"${DEVKIT_ENV[@]}"} ${TOUR_APP_ENV[@]+"${TOUR_APP_ENV[@]}"}; do
+      [[ $kv == [A-Za-z_]*=* ]] || { echo "devkit: DEVKIT_ENV/TOUR_APP_ENV entry '$kv' is not NAME=value" >&2; return 1; }
+      printf 'export %q\n' "$kv"
+    done
+    printf 'cd %q || exit 1\n' "$(app_cwd)"
+    printf 'rm -f %q\n' "$NEST/app.exit"
+    printf '%q ' "$(app_command_path)" "${DEVKIT_APP_CMD[@]:1}"
+    printf '>>%q 2>&1\n' "$NEST/app.log"
+    printf 'rc=$?\necho "devkit: app exited with status $rc" >>%q\necho "$rc" >%q\n' "$NEST/app.log" "$NEST/app.exit"
+  } >"$f"
+  chmod +x "$f"
 }
 
 # A home of its own for the nested session: the Omarchy themes it needs, a minimal shell config that loads only
@@ -60,6 +110,10 @@ sandbox_build() {
     [[ -e $HOME/.config/omarchy/$rel ]] && cp -a "$HOME/.config/omarchy/$rel" "$h/.config/omarchy/"
   done
   [[ -e $HOME/.local/state/omarchy/current ]] && ln -s "$HOME/.local/state/omarchy/current" "$h/.local/state/omarchy/current"
+  if [[ ${DEVKIT_APP_MODE:-0} == 1 ]]; then
+    sandbox_build_app "$h" || return 1
+    return 0
+  fi
   ln -s "$REPO" "$h/.config/omarchy/plugins/$TOUR_PLUGIN_ID"
   # The bar is your real one, so it looks like your desktop: its settings, and the layout kept to Omarchy's own widgets
   # (other plugins are left out: they would start their own services) plus this app.
@@ -83,6 +137,12 @@ sandbox_build() {
     jq --arg label "$NEST_LABEL" '.bar.layout.left = [{id: "sandbox-label", type: "command", exec: ("echo " + ($label | @sh)), interval: 3600}] + (.bar.layout.left // [])' \
       "$h/.config/omarchy/shell.json" >"$h/shell.json.new" && mv "$h/shell.json.new" "$h/.config/omarchy/shell.json"
   fi
+  sandbox_finish "$h"
+}
+
+# The tail both modes share: the copies and links the app lists, the guard, the app's own sandbox hooks, the pointer client.
+sandbox_copies() {
+  local h=$1 rel
   for rel in "${TOUR_SANDBOX_COPY[@]:-}"; do
     [[ -n $rel && -e $HOME/$rel ]] || continue
     mkdir -p "$h/$(dirname "$rel")"
@@ -93,10 +153,28 @@ sandbox_build() {
     mkdir -p "$h/$(dirname "$rel")"
     ln -s "$HOME/$rel" "$h/$rel"
   done
+}
+sandbox_finish() {
+  local h=$1
+  sandbox_copies "$h"
   sandbox_repoint "$h" || return 1
   if declare -F devkit_sandbox >/dev/null; then devkit_sandbox "$h" || return 1; fi
   if declare -F tour_sandbox >/dev/null; then tour_sandbox "$h"; fi
-  "$DEVKIT_LIB/build-vptr.sh" "$NEST_BIN" >/dev/null || { echo "devkit: could not build the virtual pointer client" >&2; return 1; }
+  vptr_build
+}
+vptr_build() { "$DEVKIT_LIB/build-vptr.sh" "$NEST_BIN" >/dev/null || { echo "devkit: could not build the virtual pointer client" >&2; return 1; }; }
+
+# App mode: no Omarchy shell config and no plugin link. The app gets the sandbox home (so its config, data and state are not yours), your
+# fonts and fontconfig read-only (a changed HOME would otherwise lose them), and the launcher script.
+sandbox_build_app() {
+  local h=$1 rel
+  for rel in .local/share/fonts .config/fontconfig; do
+    [[ -e $HOME/$rel ]] || continue
+    mkdir -p "$h/$(dirname "$rel")"
+    [[ -e $h/$rel ]] || ln -s "$HOME/$rel" "$h/$rel"
+  done
+  sandbox_finish "$h" || return 1
+  app_launcher_write
 }
 
 # The session must never reach your real machine. Its shell shares your user's systemd, your login session and your system
@@ -168,7 +246,8 @@ sandbox_enter() {
 }
 
 nested_start() {
-  local before_wins sig sock i addr started
+  local before_wins sig sock i addr started app_launch=""
+  [[ ${DEVKIT_APP_MODE:-0} != 1 ]] || app_launch=$NEST_BIN/app-launch
   # The session is found by being created after this point, not by having a name that was absent before: its socket is called
   # wayland-N and the number is reused, so a stale file of an earlier session would hide it.
   started=$(( $(date +%s) - 1 ))
@@ -198,6 +277,9 @@ end
 hl.on("hyprland.start", function()
   local go = os.getenv("NEST_GO")
   local wait = go and ("while [ ! -e '" .. go .. "' ]; do sleep 0.1; done; ") or ""
+  -- App mode: the session's client is the app's own launcher (lib/session.sh app_launcher_write), not the Omarchy shell.
+  local app = os.getenv("NEST_APP_LAUNCH")
+  if app then hl.exec_cmd(wait .. "exec '" .. app .. "'") return end
   hl.exec_cmd(wait .. "QS_DISABLE_FILE_WATCHER=1 QS_NO_RELOAD_POPUP=1 quickshell -n -p " .. (os.getenv("OMARCHY_PATH") or "/usr/share/omarchy") .. "/shell >> " .. (os.getenv("NEST_QS_LOG") or "/dev/null") .. " 2>&1")
 end)
 LUA
@@ -222,11 +304,11 @@ CONF
   : >"$NEST/qs.log"
   if [[ -n ${NEST_DETACH:-} ]]; then
     # A session that outlives this script (bin/dev): its own process group, found again by its environment, not a pid.
-    setsid -f env -u HYPRLAND_INSTANCE_SIGNATURE -u HYPRLAND_CMD NEST_QS_LOG="$NEST/qs.log" NEST_GO="$NEST/go" \
+    setsid -f env -u HYPRLAND_INSTANCE_SIGNATURE -u HYPRLAND_CMD NEST_QS_LOG="$NEST/qs.log" NEST_GO="$NEST/go" ${app_launch:+NEST_APP_LAUNCH="$app_launch"} \
       dbus-run-session --config-file="$NEST/dbus.conf" -- Hyprland -c "$NEST/hypr.lua" >"$NEST/hypr.log" 2>&1
     nest_pid=detached
   else
-    env -u HYPRLAND_INSTANCE_SIGNATURE -u HYPRLAND_CMD NEST_QS_LOG="$NEST/qs.log" NEST_GO="$NEST/go" \
+    env -u HYPRLAND_INSTANCE_SIGNATURE -u HYPRLAND_CMD NEST_QS_LOG="$NEST/qs.log" NEST_GO="$NEST/go" ${app_launch:+NEST_APP_LAUNCH="$app_launch"} \
       dbus-run-session --config-file="$NEST/dbus.conf" -- Hyprland -c "$NEST/hypr.lua" >"$NEST/hypr.log" 2>&1 &
     nest_pid=$!
   fi
@@ -334,7 +416,11 @@ nested_view_close() { local p; for p in $(procs_with "NEST_VIEW=1"); do kill "$p
 nested_wait_ready() {
   local i
   for i in $(seq 1 60); do
-    if env WAYLAND_DISPLAY="$NWD" HYPRLAND_INSTANCE_SIGNATURE="$NSIG" omarchy-shell shell ping >/dev/null 2>&1; then break; fi
+    if [[ ${DEVKIT_APP_MODE:-0} == 1 ]]; then
+      # App mode: ready when the app has a window (or has died: dev up then says so).
+      app_window_up && break
+      [[ -s $NEST/app.exit ]] && break
+    elif env WAYLAND_DISPLAY="$NWD" HYPRLAND_INSTANCE_SIGNATURE="$NSIG" omarchy-shell shell ping >/dev/null 2>&1; then break; fi
     sleep 0.5
   done
   NMON=$(env HYPRLAND_INSTANCE_SIGNATURE=$NSIG hyprctl monitors -j | jq -r '.[0].name')

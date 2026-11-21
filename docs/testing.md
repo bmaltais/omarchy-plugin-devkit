@@ -29,6 +29,19 @@ Every command prints one line and exits non-zero when it did not do what it says
 - **Watching the session's own window:** `DEV_WINDOW=1 dev up` keeps the session's window on your screen (floating, at the session's size, centred) instead of the far monitor and view window. Hovering, clicking or typing over it does nothing, because the nested compositor ignores your mouse and keyboard; the pointer is hidden while it is over the window, and a drag of the window can leave it odd until it moves again. No view window opens. Use `dev watch` if you want one as well.
 - **Watching it:** `up` opens a view-only window (`lib/dev-view.qml`) showing the session five times a second (`DEV_WATCH=0 dev up` for none; `dev watch` opens it later, `dev unwatch` closes it). It is an ordinary window: your pointer is the normal arrow over it, and a click does nothing there. The session's own window is never put on your screen (see [how-it-works.md](how-it-works.md#what-went-wrong-on-the-way-and-the-rule-it-left)).
 
+## A standalone app
+
+With `DEVKIT_APP_CMD` in `devkit.conf` the session runs your app instead of the Omarchy shell, and the commands above work the same way against it: `dev up` (starts the session and the app, fails when the app shows no window), `dev shot`, `dev click`, `dev type`, `dev key`, `dev errors` (what the app printed to stdout and stderr, noise removed), `dev reload` (restart the app, to pick up a rebuild), `dev down`. `dev ipc` and `dev set` are plugin-only. The app runs with a sandbox home, `QT_QPA_PLATFORM=wayland` and the session's Wayland socket. [configuration.md](configuration.md#standalone-app) has the variables.
+
+```sh
+cmake --build build && dev up       # fugue: DEVKIT_APP_CMD=(build/fugue)
+dev shot /tmp/a.png                 # look at it
+dev click 25 13                     # the File menu
+dev errors                          # 0 = nothing logged
+cmake --build build && dev reload   # new binary, same session
+dev down
+```
+
 ## A plugin's own scripts
 
 The kit has no smoke test or screenshots script, because what they open is the plugin's. They are short, built from `dev`:

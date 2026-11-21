@@ -14,6 +14,13 @@ devkit_load_config() {
   [[ -f $DEVKIT_CONF ]] || { echo "devkit: no devkit.conf in $REPO (see $DEVKIT/docs/configuration.md; run from the app's checkout or set DEVKIT_APP_ROOT)" >&2; return 1; }
   # Defaults: what an app that sets nothing gets.
   TOUR_PLUGIN_ID=""
+  # App mode (docs/configuration.md#standalone-app): DEVKIT_APP_CMD set means the session runs this command, not the Omarchy shell.
+  DEVKIT_APP_CMD=()
+  DEVKIT_APP_CLASS=""
+  DEVKIT_APP_TITLE=""
+  DEVKIT_APP_CWD=""
+  TOUR_APP_ENV=()
+  DEVKIT_APP_MODE=0
   TOUR_PLUGIN_ENTRY='{}'
   TOUR_PLUGIN_WIDGET=1
   TOUR_SANDBOX_COPY=()
@@ -35,7 +42,13 @@ devkit_load_config() {
   TOUR_TITLE=""
   # shellcheck disable=SC1090
   source "$DEVKIT_CONF"
-  [[ -n $TOUR_PLUGIN_ID ]] || { echo "devkit: $DEVKIT_CONF must set TOUR_PLUGIN_ID (the plugin's id)" >&2; return 1; }
+  if ((${#DEVKIT_APP_CMD[@]} > 0)); then
+    [[ -n ${DEVKIT_APP_CMD[0]} ]] || { echo "devkit: DEVKIT_APP_CMD in $DEVKIT_CONF starts with an empty word" >&2; return 1; }
+    [[ -z $TOUR_PLUGIN_ID ]] || { echo "devkit: $DEVKIT_CONF sets both DEVKIT_APP_CMD (a standalone app) and TOUR_PLUGIN_ID (a plugin): pick one" >&2; return 1; }
+    DEVKIT_APP_MODE=1
+  else
+    [[ -n $TOUR_PLUGIN_ID ]] || { echo "devkit: $DEVKIT_CONF must set TOUR_PLUGIN_ID (the plugin's id), or DEVKIT_APP_CMD for a standalone app" >&2; return 1; }
+  fi
   : "${DEVKIT_NAME:=$(basename "$REPO" | tr '[:upper:]' '[:lower:]')}"
   : "${TOUR_TITLE:=$DEVKIT_NAME}"
   jq -e 'type == "object"' <<<"$TOUR_PLUGIN_ENTRY" >/dev/null 2>&1 || { echo "devkit: TOUR_PLUGIN_ENTRY in $DEVKIT_CONF is not a JSON object" >&2; return 1; }

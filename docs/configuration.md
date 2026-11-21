@@ -16,7 +16,7 @@ DEVKIT_LAYERS=(omarchy-myplugin)
 
 | Variable | Meaning | Default |
 |---|---|---|
-| `TOUR_PLUGIN_ID` | **Required.** The plugin's id (its `manifest.json` `id`). The checkout is linked into the session's plugins folder under it | |
+| `TOUR_PLUGIN_ID` | **Required** (unless `DEVKIT_APP_CMD` is set: [Standalone app](#standalone-app)). The plugin's id (its `manifest.json` `id`). The checkout is linked into the session's plugins folder under it | |
 | `DEVKIT_NAME` | A short lower-case name: the session's state folder (`$XDG_RUNTIME_DIR/NAME-dev`) and its view window (`NAME-test-viewer`, "NAME test session") | the checkout's folder name |
 | `TOUR_TITLE` | The app's name for the recorder's strip and notifications | `DEVKIT_NAME` |
 | `TOUR_PLUGIN_ENTRY` | A JSON object merged into the plugin's entry in the sandbox's `shell.json`: the settings the session starts with | `{}` |
@@ -42,6 +42,35 @@ DEVKIT_LAYERS=(omarchy-myplugin)
 `try-setting` reads the shell config named by `DEVKIT_SHELL_JSON` (default `~/.config/omarchy/shell.json`).
 
 `qmllint` reads two environment variables, as it is Python: `DEVKIT_APP_ROOT` and `DEVKIT_QML_BASELINE` (default `scripts/qmllint-baseline.txt`).
+
+## Standalone app
+
+A standalone Wayland app (a Qt Quick binary, a terminal, anything that opens a window) is tested and recorded in the same session, with its own command in place of the Omarchy shell and plugin. Set `DEVKIT_APP_CMD` and leave out `TOUR_PLUGIN_ID` (setting both is an error). Nothing of plugin mode changes when `DEVKIT_APP_CMD` is not set.
+
+```bash
+# shellcheck shell=bash
+DEVKIT_NAME=fugue
+DEVKIT_APP_CMD=(build/fugue)
+DEVKIT_APP_CLASS='^fugue$'
+TOUR_REAL_UNCHANGED=(.config/fugue .local/share/fugue)
+```
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `DEVKIT_APP_CMD=(prog arg …)` | The app: this command is the session's only client. A bare name is looked up on `PATH`, a relative path is from the checkout | |
+| `DEVKIT_APP_CLASS` | Regular expression for the app's window class (or initial class): the window counts as up when a mapped one matches | any window |
+| `DEVKIT_APP_TITLE` | The same for the window title | any title |
+| `DEVKIT_APP_CWD` | The app's working directory, relative to the checkout | the checkout |
+| `TOUR_APP_ENV=(NAME=value …)` | Environment for the app only, applied last, so it may override anything below. `DEVKIT_ENV` reaches it as well | none |
+
+What the app runs with:
+
+- **A sandbox home.** `HOME` and `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` and `XDG_CACHE_HOME` are the session's, so the app's settings, data and state are not yours and start empty. Your fonts and fontconfig are linked in read-only, and Omarchy's theme files are copied, as in plugin mode. To give it data on purpose use `TOUR_SANDBOX_COPY` (a copy) or `TOUR_SANDBOX_LINK` (read-only); to point it at a real folder, say so with `TOUR_APP_ENV=(XDG_CONFIG_HOME="$HOME/.config")` (the conf is read with your real `HOME`). Name what a recording must not change in `TOUR_REAL_UNCHANGED`.
+- **`QT_QPA_PLATFORM=wayland`** (and `GDK_BACKEND=wayland`), `WAYLAND_DISPLAY` of the session's socket (Hyprland sets it), the session's own D-Bus, and the guard first on `PATH`.
+- **The size of the session's screen** (`DEV_SIZE`, `TOUR_SIZE`). The session has no bar or other windows, so a single window fills it; a dialog the app opens floats over it.
+- **Its output in a log.** stdout and stderr go to `$XDG_RUNTIME_DIR/NAME-dev/nest/app.log`, and `dev errors` lists the lines that look like a problem (`warn`, `error`, `critical`, `fatal`, QML type errors, and "app exited with status N", which counts as an error); `DEVKIT_NOISE` hides lines. `dev status` says whether the app is running or exited, and whether its window is open.
+
+What `dev` does in app mode: `up` (fails, leaving the session up for `dev errors`, when the app has no window or has exited), `down`, `status`, `reload` (ends the app and starts it again, so a rebuilt binary is picked up), `run`, `windows`, `env`, `click`, `rclick`, `scroll`, `move`, `type`, `key`, `shot`, `errors`, `watch`/`unwatch`, and an app's own `dev_cmd_NAME`. `ipc` and `set` need the shell and refuse. `layer_mapped` and `DEVKIT_LAYERS` are not used; a `devkit_window_up` hook, if defined, still replaces the window check. A tour needs no `TOUR_LAYER`: `typed`, `esc` and `pressed` send keys while the app has a window, and `app_window_up` is there for `wait_until`.
 
 ## Hooks (functions in `devkit.conf`)
 
