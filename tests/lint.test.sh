@@ -16,4 +16,9 @@ setsid -f sleep 9
 check "sandbox: a copy of the real shell.json is caught" bash -c "! '$KIT/bin/lint' '$(tree 'devkit.conf=# shellcheck shell=bash\nTOUR_SANDBOX_COPY=(.config/omarchy/shell.json)\n')' >/dev/null 2>&1"
 check "sandbox: a link of it is caught" bash -c "! '$KIT/bin/lint' '$(tree 'devkit.conf=# shellcheck shell=bash\nTOUR_SANDBOX_LINK=(.local/share/icons .config/omarchy/shell.json)\n')' >/dev/null 2>&1"
 check "sandbox: a comment about it passes" lint "$(tree 'devkit.conf=# shellcheck shell=bash\nTOUR_SANDBOX_COPY=()   # the sandbox has its own shell.json\n')"
+floatfix=$(tree 'lib/x.sh=# shellcheck shell=bash\nreal hyprctl dispatch "hl.dsp.window.float({ action = \\"set\\" })"\n')
+check "floatset: float with action = \"set\" is caught" bash -c '! "$1/bin/lint" "$2" >/dev/null 2>&1' _ "$KIT" "$floatfix"
+check "floatset: the message names the rule" bash -c '"$1/bin/lint" "$2" 2>&1 | grep -q "not a Hyprland action"' _ "$KIT" "$floatfix"
+check "floatset: action = \"on\" passes" lint "$(tree 'lib/x.sh=# shellcheck shell=bash\nreal hyprctl dispatch "hl.dsp.window.float({ action = \\"on\\" })"\n')"
+check "floatset: a comment about it passes" lint "$(tree 'lib/x.sh=# shellcheck shell=bash\n# float({ action = "set" }) toggles\n')"
 finish

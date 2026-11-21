@@ -232,7 +232,7 @@ if declare -F tour_prepare >/dev/null; then tour_prepare || { echo "tour: tour_p
 FAR_MON=TOURTEST
 nested_far_up
 nested_start || exit 1
-nested_send_away "$prev_focus"
+nested_send_away "$prev_focus" || exit 1
 start_banner
 nested_wait_ready
 echo live >"$TMP/view.live"

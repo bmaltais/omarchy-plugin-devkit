@@ -8,6 +8,7 @@
 #           ready session sits unused.
 # sandbox   A TOUR_SANDBOX_COPY or TOUR_SANDBOX_LINK must not name the real shell.json: the sandbox has its own, and a copy or a link of
 #           the real one would let the session write to it.
+# floatset  hl.dsp.window.float({ action = "set" }) is a toggle in Hyprland, which tiles a window that already floats (use "on" or "off").
 set -uo pipefail
 root=$(cd "${1:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}" && pwd) || exit 2
 cd "$root" || exit 2
@@ -46,7 +47,16 @@ sandbox() {
   [[ -z $out ]] || { echo "a sandbox copy or link names the real shell.json (the session writes its own):"; printf '    %s' "$out"; return 1; }
 }
 
-for rule in detached sandbox; do
+floatset() {
+  local f hits out=""
+  while read -r f; do
+    hits=$(sed 's/ *#.*//' "$f" | grep -nE 'action *= *\\?"set\\?"' || true)
+    [[ -z $hits ]] || out+="$f: ${hits//$'\n'/; }"$'\n'
+  done < <(files 'action *= *[^a-z]*set')
+  [[ -z $out ]] || { echo 'action = "set" is not a Hyprland action (the parser falls back to TOGGLE, which tiles a floating window): use "on" or "off":'; printf '    %s' "$out"; return 1; }
+}
+
+for rule in detached sandbox floatset; do
   out=$($rule 2>&1) || { printf '%s\n' "$out"; fail=1; }
 done
 ((fail == 0)) && echo "lint: ok"
