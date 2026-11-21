@@ -62,6 +62,7 @@
 #     wait_until 'cmd' [seconds]    poll a shell command until it succeeds (default 30 s)
 #     W H TMP REPO TOUR_DIR   the session's size, a scratch folder, the app's root, the folder the tour file is in
 set -u
+export DEVKIT_NO_REAL_INPUT=1   # nothing the session runs may drive the real pointer (bin/pointer refuses)
 
 # shellcheck source=../lib/config.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/config.sh"

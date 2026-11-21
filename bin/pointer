@@ -14,10 +14,15 @@
 #
 # PX,PY are the pixels you read off a screenshot of the focused monitor; this works out the monitor's place in the layout and its
 # scale, so no coordinate is ever halved or offset by hand. A click goes to whatever is under the pointer: look at a screenshot
-# first, because a click outside a window can close it. Needs ydotool and a writable /dev/uinput.
+# first, because a click outside a window can close it. Needs ydotool and a writable /dev/uinput. Refuses (exit 3) while
+# DEVKIT_NO_REAL_INPUT=1, which the tests, `dev` and `tour` set.
 set -euo pipefail
 
 case ${1:-} in -h | --help | "") sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//' >&2; exit 2 ;; esac
+if [[ ${DEVKIT_NO_REAL_INPUT:-0} == 1 ]]; then
+  echo "pointer: refused: DEVKIT_NO_REAL_INPUT=1 (set by tests, dev and tour) and this drives your REAL pointer. Run it from your own shell." >&2
+  exit 3
+fi
 DEVKIT_KEY_CLASSES=(spare-test)
 # shellcheck source=../lib/config.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/config.sh"

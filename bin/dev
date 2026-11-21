@@ -50,6 +50,7 @@
 # Every command prints one line, and exits non-zero when it did not do what it says. (DEV_QUIET=1 leaves out the notes a click or a key
 # prints when the app's window is not open, for a script that clicks on purpose.)
 set -euo pipefail
+export DEVKIT_NO_REAL_INPUT=1   # nothing the session runs may drive the real pointer (bin/pointer refuses)
 
 SELF=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/dev
 # shellcheck source=../lib/config.sh
