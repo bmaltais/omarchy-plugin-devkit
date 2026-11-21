@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # dev: test an Omarchy plugin, or a standalone Wayland app, in a nested desktop that your mouse and keyboard cannot reach.
+# (Driving the session never touches your real pointer. Starting and ending it still moves the real cursor: see "What a host window
+# cannot avoid" below.)
 #
 # With DEVKIT_APP_CMD in devkit.conf (a standalone app, docs/configuration.md#standalone-app) the session's client is that command, not the
 # Omarchy shell and plugin: `up`, `down`, `status`, `reload` (restarts the app), `run`, `windows`, `env`, the input commands, `shot` and
 # `errors` (the app's stdout and stderr) work; `ipc` and `set` need the shell and say so.
 #
-#   dev up                      start the session: a second Hyprland and Omarchy shell, the app's checkout as the plugin, and the
-#                               view window on your screen (DEV_WATCH=0 for none; DEV_SIZE=WxH for another screen size)
+#   dev up                      start the session: a second Hyprland and Omarchy shell, the app's checkout as the plugin.
+#                               DEV_SIZE=WxH for another screen size; DEV_WATCH=1 also opens the view window on your screen (off by
+#                               default: a new window takes the keyboard focus and warps the cursor)
 #   dev reload                  restart that shell so it loads the checkout's current files (uncommitted changes too)
 #   dev ipc TARGET METHOD [ARG...]   call the plugin's IPC in the session: omarchy-shell TARGET METHOD ARG... there
 #   dev run CMD [ARG...]        start a program inside the session (foot -a demo sleep 600: a throwaway window)
@@ -44,6 +47,12 @@
 # Or watch the session's own window: `DEV_WINDOW=1 dev up` leaves it on your screen, floating at the session's size, instead of
 # on the far monitor with a view window. Your mouse and keyboard still cannot touch it (the nested compositor ignores them), but
 # the pointer is hidden while it is over the window, and the window can be covered or moved like any other.
+#
+# What a host window cannot avoid. The session is a window of your compositor, so a host window cannot be made event-free: its window
+# opens and takes focus events on your desktop, and removing the far monitor when it ends makes Hyprland warp the cursor (Monitor
+# onDisconnect always does, and nothing can turn that off). `up` keeps the rest quiet: the window is moved with follow = false and focus is
+# not handed back. Only a headless backend (a compositor with no window of the host's, planned) avoids it all. The session never reads
+# or drives your pointer: `vptr` and `wtype` refuse a socket that is not a nested compositor's, and `pointer` refuses under dev and tour.
 #
 # The session closes by itself after DEV_TTL seconds (default 1800), and a window closed by hand is cleaned up by the next `up`.
 # Pixels are those of the session's screen, 1280x800 unless DEV_SIZE=WxH says otherwise (a bigger one for sharper screenshots), 0,0 at the top-left: take a `dev shot`, read the pixel off it, click.
@@ -135,14 +144,12 @@ cmd_up() {
   # A start that fails half way (the window never appears, the shell does not come up) must not leave the far monitor, the nested
   # compositor or the view window behind: undo it all on the way out, until the session is recorded below.
   trap 'nest_pid=detached; nested_view_close; nested_stop; nested_far_down; ledger_release; rm -rf "$DEV"' EXIT
-  local prev_focus
-  prev_focus=$(hyprctl activewindow -j | jq -r '.address // empty')
   # The far monitor first, so the window can be sent there the moment it exists (DEV_WINDOW=1 keeps it on your screen).
   [[ ${DEV_WINDOW:-0} == 1 ]] || nested_far_up
   sandbox_build || exit 1
   sandbox_enter
   NEST_DETACH=1 nested_start || exit 1
-  nested_send_away "$prev_focus"
+  nested_send_away
   nested_wait_ready
   { printf 'NSIG=%q\nNWD=%q\nNMON=%q\nNW=%q\nNH=%q\nNEST_ADDR=%q\nLEDGER=%q\n' "$NSIG" "$NWD" "$NMON" "$NW" "$NH" "$NEST_ADDR" "$LEDGER"; } >"$STATE"
   trap - EXIT   # the session is up: from here `dev down` (or the watcher below) ends it
@@ -155,7 +162,7 @@ cmd_up() {
     return 0
   fi
   echo "dev up: session $NWD ${NW}x${NH} out of reach of your mouse and keyboard (look with dev shot), closes in ${TTL}s; $( ((APP)) && echo app || echo plugin) errors so far: $(plugin_errors | wc -l)"
-  [[ ${DEV_WATCH:-1} == 0 ]] || cmd_watch
+  [[ ${DEV_WATCH:-0} != 1 ]] || cmd_watch
   if ((APP)) && ! app_window_up; then
     echo "dev up: the app has no window yet ($( [[ -s $NEST/app.exit ]] && echo "it exited with status $(cat "$NEST/app.exit")" || echo "still starting, or DEVKIT_APP_CLASS/DEVKIT_APP_TITLE match nothing: dev windows")); see dev errors, or $NEST/app.log" >&2
     exit 1

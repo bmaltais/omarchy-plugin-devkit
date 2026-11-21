@@ -40,4 +40,8 @@ for c in "false 1280 800 1280 800" "true 819 492 1280 800" "true 1280 800 819 49
   check "size: the refusal says what it found ($c)" grep -q 'not the size asked for' "$WORK/err"
   check "size: no go file after a refusal ($c)" test ! -e "$NEST/go"
 done
+# Off the far monitor path (the default): the move is the silent one, and focus is not handed back.
+DEV_WINDOW=0 FAR_MON=DEVTEST try true 1280 800 1280 800
+check "size: the move to the far monitor is silent (follow = false)" grep -q 'window.move({ monitor = "DEVTEST", follow = false' "$HYPR_LOG"
+check "size: focus is not handed back (it would warp the cursor)" bash -c '! grep -q "hl.dsp.focus" "$1"' _ "$HYPR_LOG"
 finish
