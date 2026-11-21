@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bin/qmllint, bin/check, bin/reload and bin/pointer, run against stand-ins for qmllint, hyprctl, ydotool and omarchy-shell: no Hyprland is needed.
+# bin/qmllint, bin/check, bin/reload and bin/pointer, run against stand-ins for qmllint, hyprctl, ydotool, ydotoold and omarchy-shell: no Hyprland is needed.
 source "$(dirname "$0")/lib.sh"
 
 mkapp() { # NAME CONF-BODY: an app checkout with a devkit.conf, as a git repo
@@ -63,7 +63,13 @@ check "reload: --check with an uncommitted file marks it +local" bash -c "PATH='
 # --- pointer: keys only go to the windows the app allows
 stub hyprctl 'case "$*" in *monitors*) echo "[{\"focused\":true,\"x\":0,\"y\":0,\"scale\":1,\"width\":100,\"height\":100,\"name\":\"M\"}]" ;; *activewindow*) echo "{\"class\":\"$FOCUS\"}" ;; *cursorpos*) echo "{\"x\":1,\"y\":1}" ;; esac'
 stub ydotool 'echo "$*" >>"$YD_LOG"'
-mkdir -p "$WORK/run"; touch "$WORK/run/.ydotool_socket"
+stub ydotoold 'echo "$*" >>"$YDD_LOG"'
+export YDD_LOG=$WORK/ydd.log; : >"$YDD_LOG"
+# A real unix socket where bin/pointer looks for the daemon's (a plain file would make it start the daemon: that is how a test once leaked a real one).
+mkdir -p "$WORK/run"
+mksock() { python3 -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$1"; }
+mksock "$WORK/run/.ydotool_socket"
+export DEVKIT_NO_REAL_INPUT=0   # the stand-ins are first on PATH in every call below; the refusal itself is tested after them
 p=$(mkapp p 'DEVKIT_KEY_CLASSES=(throwaway)')
 export YD_LOG=$WORK/yd.log; : >"$YD_LOG"
 pt() { PATH=$stubs:$PATH XDG_RUNTIME_DIR=$WORK/run DEVKIT_APP_ROOT=$p "$KIT/bin/pointer" "$@" 2>&1; }
@@ -72,6 +78,11 @@ check "pointer: keys are refused to a window that is not listed" bash -c "export
 check "pointer: keys go to a listed throwaway window" bash -c "export FOCUS=throwaway YD_LOG='$YD_LOG'; PATH='$stubs':\$PATH XDG_RUNTIME_DIR='$WORK/run' DEVKIT_APP_ROOT='$p' '$KIT/bin/pointer' key 30:1 >/dev/null 2>&1 && grep -q 'key 30:1' '$YD_LOG'"
 check "pointer: click moves, nudges and clicks" bash -c "export FOCUS=x YD_LOG='$YD_LOG'; : >'$YD_LOG'; PATH='$stubs':\$PATH XDG_RUNTIME_DIR='$WORK/run' DEVKIT_APP_ROOT='$p' '$KIT/bin/pointer' click 10 20 >/dev/null 2>&1 && grep -q 'click 0xC0' '$YD_LOG'"
 check "pointer: a right click is 0xC1" bash -c "export FOCUS=x YD_LOG='$YD_LOG'; : >'$YD_LOG'; PATH='$stubs':\$PATH XDG_RUNTIME_DIR='$WORK/run' DEVKIT_APP_ROOT='$p' '$KIT/bin/pointer' click 10 20 right >/dev/null 2>&1 && grep -q 'click 0xC1' '$YD_LOG'"
+
+check "pointer: a live socket means no daemon is started" test ! -s "$YDD_LOG"
+rm -f "$WORK/run/.ydotool_socket"
+check "pointer: with no socket it starts the (stand-in) daemon on the socket path" bash -c "export FOCUS=x YD_LOG='$YD_LOG' YDD_LOG='$YDD_LOG'; PATH='$stubs':\$PATH XDG_RUNTIME_DIR='$WORK/run' DEVKIT_APP_ROOT='$p' '$KIT/bin/pointer' pos >/dev/null 2>&1; sleep 0.2; grep -q 'socket-path=$WORK/run/.ydotool_socket' '$YDD_LOG'"
+check "pointer: DEVKIT_NO_REAL_INPUT=1 refuses with exit 3, before any tool runs" bash -c "export FOCUS=x YD_LOG='$YD_LOG'; : >'$YD_LOG'; PATH='$stubs':\$PATH DEVKIT_NO_REAL_INPUT=1 XDG_RUNTIME_DIR='$WORK/run' DEVKIT_APP_ROOT='$p' '$KIT/bin/pointer' click 1 1 >/dev/null 2>&1; [[ \$? == 3 && ! -s '$YD_LOG' ]]"
 
 # --- pre-commit: refuses a protected branch, runs the check, reports its failure
 g=$(mkapp g 'DEVKIT_CHECK_CMD=(test -f ok.txt)'); git -C "$g" checkout -q -b main 2>/dev/null

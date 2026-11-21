@@ -9,7 +9,7 @@
 #
 # How it works. The tour runs in a nested session: a second Hyprland with its own Omarchy shell and this plugin, in a
 # sandbox home with copies of the app's data, driven over its own Wayland socket with a virtual pointer and keyboard. It is
-# filmed frame by frame with grim. Your mouse and keyboard are free and nothing of yours is changed. The session's own window
+# filmed frame by frame with grim. Your mouse and keyboard are free (starting and ending the session still warps the cursor once) and nothing of yours is changed. The session's own window
 # sits on a virtual monitor out of reach of your pointer; you watch it in a view-only window on your screen, under a red
 # status strip with a Cancel recording button (Ctrl+C also cancels, and so does TOUR_MAX_SECONDS). When it ends, is
 # cancelled or fails, everything it started is stopped. See lib/session.sh.
@@ -62,6 +62,7 @@
 #     wait_until 'cmd' [seconds]    poll a shell command until it succeeds (default 30 s)
 #     W H TMP REPO TOUR_DIR   the session's size, a scratch folder, the app's root, the folder the tour file is in
 set -u
+export DEVKIT_NO_REAL_INPUT=1   # nothing the session runs may drive the real pointer (bin/pointer refuses)
 
 # shellcheck source=../lib/config.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../lib/config.sh"
@@ -224,14 +225,13 @@ magick -size "${W}x${H}" "xc:$TOUR_BG" "$TMP/bg.png"
 # ---- a nested session on a far monitor, in a sandbox, shown in a view window ---------------------------
 ledger_reap   # sessions of earlier runs that were killed
 ledger_start
-prev_focus=$(hyprctl activewindow -j | jq -r '.address // empty')
 sandbox_build || exit 1
 sandbox_enter
 if declare -F tour_prepare >/dev/null; then tour_prepare || { echo "tour: tour_prepare failed" >&2; exit 1; }; fi
 FAR_MON=TOURTEST
 nested_far_up
 nested_start || exit 1
-nested_send_away "$prev_focus"
+nested_send_away || exit 1
 start_banner
 nested_wait_ready
 echo live >"$TMP/view.live"
@@ -376,7 +376,7 @@ type_chars() { # TEXT SENDER... : the sender is called with each character
     prev=$c
   done
 }
-_wtype_one() { WAYLAND_DISPLAY=$NWD wtype -- "$1"; }
+_wtype_one() { nest_probe && WAYLAND_DISPLAY=$NWD wtype -- "$1"; }
 # Keys and typing only while the app's window is up in the session: otherwise they would go to whatever else is there.
 layer_up() { # NAMESPACE: is a layer-shell surface of that namespace mapped in the session?
   hyprctl layers -j | jq -e --arg m "$CAPMON" --arg ns "$1" '.[$m] | [.. | .namespace? // empty] | any(. == $ns)' >/dev/null 2>&1

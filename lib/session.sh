@@ -348,37 +348,58 @@ nested_far_up() {
 }
 nested_far_down() { real hyprctl output remove "$FAR_MON" >/dev/null 2>&1 || true; }
 
-# The window goes to the far monitor at the session's own size, and the real keyboard goes back to what had it.
-nested_send_away() { # [PREVIOUS_FOCUS_ADDRESS]
+# The session's window must be floating at WxH (one pixel over is accepted, see below) and the nested monitor must have that size: a
+# window that was tiled, or re-floated at another size, gives a session whose screen is the wrong size and every pixel a click names wrong.
+# Fails loudly, so `dev up` never writes a state file for a session that is not the size asked for.
+nested_verify_size() {
+  local i floating have_w have_h mon_w mon_h
+  for i in $(seq 1 "${DEVKIT_SIZE_TRIES:-15}"); do
+    read -r floating have_w have_h < <(real hyprctl -j clients | jq -r --arg a "$NEST_ADDR" '.[] | select(.address == $a) | "\(.floating) \(.size[0]) \(.size[1])"')
+    read -r mon_w mon_h < <(env HYPRLAND_INSTANCE_SIGNATURE="$NSIG" hyprctl -j monitors | jq -r '.[0] | "\(.width) \(.height)"')
+    if [[ ${floating:-} == true && ${have_w:-0} == "$W" && ${have_h:-0} -ge $H && ${have_h:-0} -le $((H + 1)) && ${mon_w:-0} == "$W" && ${mon_h:-0} -ge $H && ${mon_h:-0} -le $((H + 1)) ]]; then
+      NW=$mon_w; NH=$mon_h
+      return 0
+    fi
+    sleep 0.4
+  done
+  echo "devkit: the session's window is not the size asked for: floating=${floating:-?}, window ${have_w:-?}x${have_h:-?}, nested monitor ${mon_w:-?}x${mon_h:-?}, wanted floating at ${W}x${H}. Not started (a tiled or re-floated window gives a session of the wrong size)." >&2
+  return 1
+}
+
+# The window goes to the far monitor at the session's own size. Nothing here asks for focus: follow = false is the silent move (the
+# default one focuses the window and warps the real cursor to it), and focus is not handed back (that warps the cursor again).
+nested_send_away() {
   # Float it first: a tiled window (on a workspace of tiled windows) ignores the resize, and the session's screen comes out as the tile's size.
-  real hyprctl dispatch "hl.dsp.window.float({ action = \"set\", window = \"address:$NEST_ADDR\" })" >/dev/null
-  real hyprctl dispatch "hl.dsp.window.resize({ x = $W, y = $H, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
+  # The action is "on", never "set": Hyprland's toggle parser knows only toggle/on/enable/off/disable, so "set" fell through to TOGGLE, which
+  # TILED a window that already floated (a floating-mode Omarchy workspace), and Omarchy's workspace-modes hook then re-floated it at its own size.
+  real hyprctl dispatch "hl.dsp.window.float({ action = \"on\", window = \"address:$NEST_ADDR\" })" >/dev/null
+  real hyprctl dispatch "hl.dsp.window.resize({ x = $W, y = $H, window = \"address:$NEST_ADDR\" })" >/dev/null
   # Hyprland may leave a floating window a pixel off what was asked (1280x801 for 1280x800), and an odd side makes the recorder's video
   # encoder refuse the frames: ask again until the size is the one asked for (or that plus one pixel, see below).
   local have have_w have_h i
   # (A window that has only just mapped can also come out much smaller than asked, once seen as 1276x690: so keep asking, for up to six seconds.)
-  for i in $(seq 1 15); do
+  for i in $(seq 1 "${DEVKIT_SIZE_TRIES:-15}"); do
     sleep 0.4
     have=$(real hyprctl -j clients | jq -r --arg a "$NEST_ADDR" '.[] | select(.address == $a) | "\(.size[0]) \(.size[1])"')
     # One pixel over is what Hyprland does and the recorder copes with (it crops to even sides); asking again does not change it.
     read -r have_w have_h <<<"$have"
     (( have_w == W && have_h >= H && have_h <= H + 1 )) && break
-    real hyprctl dispatch "hl.dsp.window.resize({ x = $W, y = $H, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
+    real hyprctl dispatch "hl.dsp.window.resize({ x = $W, y = $H, window = \"address:$NEST_ADDR\" })" >/dev/null
   done
   if [[ ${DEV_WINDOW:-0} == 1 ]]; then
     # Kept on your screen (`dev up` with DEV_WINDOW=1): floating, at the session's size, in the middle.
     real hyprctl dispatch "hl.dsp.window.center({ window = \"address:$NEST_ADDR\" })" >/dev/null
   else
-    real hyprctl dispatch "hl.dsp.window.move({ monitor = \"$FAR_MON\", window = \"address:$NEST_ADDR\" })" >/dev/null
-    real hyprctl dispatch "hl.dsp.window.move({ x = $FAR_X, y = 0, exact = true, window = \"address:$NEST_ADDR\" })" >/dev/null
+    real hyprctl dispatch "hl.dsp.window.move({ monitor = \"$FAR_MON\", follow = false, window = \"address:$NEST_ADDR\" })" >/dev/null
+    real hyprctl dispatch "hl.dsp.window.move({ x = $FAR_X, y = 0, window = \"address:$NEST_ADDR\" })" >/dev/null
   fi
+  nested_verify_size || return 1
   # The taskbar lists this window, and a click there asks the compositor to focus it, which moves the pointer onto a monitor nobody can
   # reach: the pointer disappears. A window that refuses focus cannot be clicked to there.
   # (Kept on your screen, the window can be focused like any other, which is what lets you drag it with your usual move binding;
   # your keyboard is still ignored by it, so a click on it only takes the focus away from your own window.)
   [[ ${DEV_WINDOW:-0} == 1 ]] || real hyprctl dispatch "hl.dsp.window.set_prop({ prop = \"no_focus\", value = \"1\", window = \"address:$NEST_ADDR\" })" >/dev/null
   real hyprctl dispatch "hl.dsp.window.set_prop({ prop = \"no_follow_mouse\", value = \"1\", window = \"address:$NEST_ADDR\" })" >/dev/null
-  [[ -n ${1:-} ]] && real hyprctl dispatch "hl.dsp.focus({ window = \"address:$1\" })" >/dev/null
   # The window has its final size: the session's shell may start now (see hypr.lua in nested_start).
   : >"$NEST/go"
   return 0
@@ -464,11 +485,15 @@ nested_stop() {
 }
 
 # ---- input: over the nested session's own socket --------------------------------------------------------
-nest_at() { WAYLAND_DISPLAY=$NWD "$VPTR" move "$1" "$2" "$NW" "$NH"; }
-nest_click() { WAYLAND_DISPLAY=$NWD "$VPTR" click "$1" "$2" "$NW" "$NH"; }
-nest_move() { WAYLAND_DISPLAY=$NWD "$VPTR" move "$1" "$2" "$NW" "$NH"; }
-nest_rclick() { WAYLAND_DISPLAY=$NWD "$VPTR" rclick "$1" "$2" "$NW" "$NH"; }
-nest_scroll() { WAYLAND_DISPLAY=$NWD "$VPTR" scroll "$1" "$2" "$NW" "$NH" "$3"; }
-nest_drag() { WAYLAND_DISPLAY=$NWD "$VPTR" drag "$gx" "$gy" "$NW" "$NH" "$1" "$2"; gx=$((gx + $1)); gy=$((gy + $2)); }
-nest_type() { WAYLAND_DISPLAY=$NWD wtype -d 45 -- "$1"; }
-nest_key() { WAYLAND_DISPLAY=$NWD wtype -k "$1"; }
+# Every input to the session goes through vptr, which refuses unless the socket it is given belongs to a nested compositor (outputs named
+# WAYLAND-n or HEADLESS-n only) and is not your own (DEVKIT_HOST_WAYLAND_DISPLAY). `probe` is that check alone, run before wtype.
+vptr() { WAYLAND_DISPLAY=$NWD DEVKIT_HOST_WAYLAND_DISPLAY=$REAL_WD "$VPTR" "$@"; }
+nest_probe() { vptr probe; }
+nest_at() { vptr move "$1" "$2" "$NW" "$NH"; }
+nest_click() { vptr click "$1" "$2" "$NW" "$NH"; }
+nest_move() { vptr move "$1" "$2" "$NW" "$NH"; }
+nest_rclick() { vptr rclick "$1" "$2" "$NW" "$NH"; }
+nest_scroll() { vptr scroll "$1" "$2" "$NW" "$NH" "$3"; }
+nest_drag() { vptr drag "$gx" "$gy" "$NW" "$NH" "$1" "$2"; gx=$((gx + $1)); gy=$((gy + $2)); }
+nest_type() { nest_probe && WAYLAND_DISPLAY=$NWD wtype -d 45 -- "$1"; }
+nest_key() { nest_probe && WAYLAND_DISPLAY=$NWD wtype -k "$1"; }
