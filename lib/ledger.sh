@@ -11,7 +11,8 @@
 #   hypr SIGNATURE   a nested compositor's instance folder           -> exit it (never yours), delete the folder
 #   wl NAME          its Wayland socket in the runtime folder        -> delete the socket and its lock
 #   sandbox PATH     a sandbox home; what runs with it as its config -> terminate, then kill
-#   dir PATH         a folder made for the session                   -> delete
+#   sway PID         a headless sway (DEVKIT_BACKEND=headless)       -> terminate, then kill (only if the process is still a sway)
+#   dir PATH         a folder made for the session                   -> delete (the headless session's private runtime dir among them)
 LEDGER_DIR=${LEDGER_DIR:-${XDG_RUNTIME_DIR:-/run/user/$UID}/${DEVKIT_NAME:-devkit}-ledger}
 LEDGER=""
 
@@ -55,6 +56,12 @@ ledger_release() {
         fi ;;
       wl) rm -f "${rt:?}/$value" "${rt:?}/$value.lock" ;;
       sandbox) _ledger_sandbox_procs "$value" TERM; sleep 0.5; _ledger_sandbox_procs "$value" KILL ;;
+      sway)
+        # The pid may have been reused by now: only a process that is still called sway is touched.
+        if [[ $value =~ ^[0-9]+$ && $(cat "/proc/$value/comm" 2>/dev/null) == sway ]]; then
+          kill -TERM "$value" 2>/dev/null; sleep 0.3
+          [[ $(cat "/proc/$value/comm" 2>/dev/null) != sway ]] || kill -KILL "$value" 2>/dev/null
+        fi ;;
       dir) [[ -n $value && $value != / ]] && rm -rf "$value" ;;
     esac
   done

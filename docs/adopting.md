@@ -6,8 +6,8 @@ For a new plugin: steps 1 to 4. For one of the three Start apps, which carry a c
 
 ```sh
 git submodule add https://github.com/OWNER/omarchy-plugin-devkit scripts/devkit
-git -C scripts/devkit checkout v0.3.1 && git add scripts/devkit
-git commit -m "Add scripts/devkit: omarchy-plugin-devkit v0.3.1"
+git -C scripts/devkit checkout v0.4.0 && git add scripts/devkit
+git commit -m "Add scripts/devkit: omarchy-plugin-devkit v0.4.0"
 # later, to update: git -C scripts/devkit fetch --tags && git -C scripts/devkit checkout vX.Y.Z && git add scripts/devkit && git commit
 ```
 
@@ -17,7 +17,7 @@ git commit -m "Add scripts/devkit: omarchy-plugin-devkit v0.3.1"
 
 At least `TOUR_PLUGIN_ID`. Add `DEVKIT_LAYERS` (the layer-shell names of the plugin's windows), `TOUR_PLUGIN_WIDGET=0` for a service, `TOUR_PLUGIN_ENTRY` for the settings the session starts from, and the commands that open its windows (`dev_cmd_*`).
 
-A standalone Wayland app (not an Omarchy plugin) adopts the kit the same way, with `DEVKIT_APP_CMD=(build/myapp)` in place of `TOUR_PLUGIN_ID`: see [Standalone app](configuration.md#standalone-app) and `examples/standalone-app`. The app's build is its own; `dev up` runs the binary the conf names, so build first. `check` skips the plugin steps it has nothing to check for (no `manifest.json`, no QML in the root).
+A standalone Wayland app (not an Omarchy plugin) adopts the kit the same way, with `DEVKIT_APP_CMD=(build/myapp)` in place of `TOUR_PLUGIN_ID`: see [Standalone app](configuration.md#standalone-app) and `examples/standalone-app`. By default it runs in a headless sway with no window of yours (`DEVKIT_BACKEND`, [Backends](configuration.md#backends)): install `sway` (it needs no GPU and does not take over your session), and a Qt app is drawn with Mesa's software renderer there. The app's build is its own; `dev up` runs the binary the conf names, so build first. `check` skips the plugin steps it has nothing to check for (no `manifest.json`, no QML in the root).
 
 ## 3. Two-line wrappers, so `scripts/dev` is what people type
 

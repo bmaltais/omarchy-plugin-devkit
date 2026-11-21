@@ -82,10 +82,11 @@ stubs=$WORK/stubs; mkdir -p "$stubs"
 printf '#!/usr/bin/env bash\ncat "$CLIENTS"\n' >"$stubs/hyprctl"; chmod +x "$stubs/hyprctl"
 export CLIENTS=$WORK/clients.json
 printf '[{"mapped":true,"class":"fugue","initialClass":"fugue","title":"Fugue - demo"},{"mapped":false,"class":"other","initialClass":"other","title":"x"}]' >"$CLIENTS"
-win() { ( PATH=$stubs:$PATH; DEVKIT_APP_CLASS=$1; DEVKIT_APP_TITLE=$2; app_window_up ); }
+# (These are the hyprland backend's: hyprctl lists the windows. The headless backend's are in headless.test.sh.)
+win() { ( DEVKIT_BACKEND_RESOLVED=hyprland; PATH=$stubs:$PATH; DEVKIT_APP_CLASS=$1; DEVKIT_APP_TITLE=$2; app_window_up ); }
 check "app mode: no class or title set matches any mapped window" win "" ""
 check "app mode: DEVKIT_APP_CLASS matches the window class" win "^fugue$" ""
 check "app mode: DEVKIT_APP_TITLE matches the title" win "" "demo"
-check "app mode: only a mapped window counts" bash -c "$(declare -f app_window_up win); PATH='$stubs':\$PATH; CLIENTS='$CLIENTS'; ! win '^other\$' ''"
-check "app mode: the wrong class is not up" bash -c "$(declare -f app_window_up win); PATH='$stubs':\$PATH; CLIENTS='$CLIENTS'; ! win '^nothere\$' ''"
+check "app mode: only a mapped window counts" bash -c "$(declare -f app_window_up win devkit_headless); PATH='$stubs':\$PATH; CLIENTS='$CLIENTS'; ! win '^other\$' ''"
+check "app mode: the wrong class is not up" bash -c "$(declare -f app_window_up win devkit_headless); PATH='$stubs':\$PATH; CLIENTS='$CLIENTS'; ! win '^nothere\$' ''"
 finish

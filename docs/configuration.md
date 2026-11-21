@@ -28,6 +28,7 @@ DEVKIT_LAYERS=(omarchy-myplugin)
 | `DEVKIT_ENV=(NAME=value …)` | Environment for everything in the session: a demo-mode switch, say | none |
 | `DEVKIT_GUARD_EXTRA=(name …)` | Commands to refuse as well as the built-in list ([how-it-works.md](how-it-works.md#the-guard)): your own plugin's power or lock command, a tool that would touch real data | none |
 | `DEVKIT_NOISE` | An extra regular expression: log lines matching it are not counted as the plugin's errors | none |
+| `DEVKIT_BACKEND` | `headless` or `hyprland`: what the session runs on ([Backends](#backends)). Also read from the environment, where it beats the conf | `headless` for an app, `hyprland` for a plugin |
 | `DEVKIT_USAGE` | Text added to `dev --help`, for the commands the conf defines | none |
 
 | `DEVKIT_RELOAD_MODE` | How `reload` puts the checkout in the shell: `link`, `copy`, `clone` or `auto` (found from `~/.config/omarchy/plugins/ID`) | `auto` |
@@ -45,7 +46,7 @@ DEVKIT_LAYERS=(omarchy-myplugin)
 
 ## Standalone app
 
-A standalone Wayland app (a Qt Quick binary, a terminal, anything that opens a window) is tested and recorded in the same session, with its own command in place of the Omarchy shell and plugin. Set `DEVKIT_APP_CMD` and leave out `TOUR_PLUGIN_ID` (setting both is an error). Nothing of plugin mode changes when `DEVKIT_APP_CMD` is not set.
+A standalone Wayland app (a Qt Quick binary, a terminal, anything that opens a window) is tested and recorded in the same kind of session, with its own command in place of the Omarchy shell and plugin, by default on the [headless backend](#backends). Set `DEVKIT_APP_CMD` and leave out `TOUR_PLUGIN_ID` (setting both is an error). Nothing of plugin mode changes when `DEVKIT_APP_CMD` is not set.
 
 ```bash
 # shellcheck shell=bash
@@ -66,11 +67,31 @@ TOUR_REAL_UNCHANGED=(.config/fugue .local/share/fugue)
 What the app runs with:
 
 - **A sandbox home.** `HOME` and `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` and `XDG_CACHE_HOME` are the session's, so the app's settings, data and state are not yours and start empty. Your fonts and fontconfig are linked in read-only, and Omarchy's theme files are copied, as in plugin mode. To give it data on purpose use `TOUR_SANDBOX_COPY` (a copy) or `TOUR_SANDBOX_LINK` (read-only); to point it at a real folder, say so with `TOUR_APP_ENV=(XDG_CONFIG_HOME="$HOME/.config")` (the conf is read with your real `HOME`). Name what a recording must not change in `TOUR_REAL_UNCHANGED`.
-- **`QT_QPA_PLATFORM=wayland`** (and `GDK_BACKEND=wayland`), `WAYLAND_DISPLAY` of the session's socket (Hyprland sets it), the session's own D-Bus, and the guard first on `PATH`.
+- **`QT_QPA_PLATFORM=wayland`** (and `GDK_BACKEND=wayland`), `WAYLAND_DISPLAY` of the session's socket (the compositor sets it), the session's own D-Bus, and the guard first on `PATH`.
 - **The size of the session's screen** (`DEV_SIZE`, `TOUR_SIZE`). The session has no bar or other windows, so a single window fills it; a dialog the app opens floats over it.
 - **Its output in a log.** stdout and stderr go to `$XDG_RUNTIME_DIR/NAME-dev/nest/app.log`, and `dev errors` lists the lines that look like a problem (`warn`, `error`, `critical`, `fatal`, QML type errors, and "app exited with status N", which counts as an error); `DEVKIT_NOISE` hides lines. `dev status` says whether the app is running or exited, and whether its window is open.
 
 What `dev` does in app mode: `up` (fails, leaving the session up for `dev errors`, when the app has no window or has exited), `down`, `status`, `reload` (ends the app and starts it again, so a rebuilt binary is picked up), `run`, `windows`, `env`, `click`, `rclick`, `scroll`, `move`, `type`, `key`, `shot`, `errors`, `watch`/`unwatch`, and an app's own `dev_cmd_NAME`. `ipc` and `set` need the shell and refuse. `layer_mapped` and `DEVKIT_LAYERS` are not used; a `devkit_window_up` hook, if defined, still replaces the window check. A tour needs no `TOUR_LAYER`: `typed`, `esc` and `pressed` send keys while the app has a window, and `app_window_up` is there for `wait_until`.
+
+## Backends
+
+`DEVKIT_BACKEND` (in `devkit.conf`, or in the environment, which wins) picks what the session runs on:
+
+- **`headless`**, the default for an app (`DEVKIT_APP_CMD`): the app runs in a **headless sway** (`WLR_BACKENDS=headless`): one virtual output `HEADLESS-1` at the session's size, no input device, no window, monitor, focus or seat on your desktop, so starting, driving and ending it cause no event of your Hyprland and your pointer never moves ([why](how-it-works.md#why-a-headless-backend)). It needs `sway` and `swaymsg` (sway 1.12 was used), as well as what the other backend needs except Hyprland: `dbus-run-session`, `wtype`, `grim`, `jq`, and `gcc`, `wayland-scanner` and `pkg-config` for the pointer client. It does not have to run inside a Hyprland session at all. A plugin cannot use it (the Omarchy shell needs Hyprland): `DEVKIT_BACKEND=headless` with `TOUR_PLUGIN_ID` is an error.
+- **`hyprland`**: a nested Hyprland that is a window of your compositor (the far monitor, the view window, the cursor warp when it ends). The only backend of a plugin, and an app's if it asks for it, to look at it on the real compositor's stack.
+
+What the headless backend gives the session:
+
+| What | Value |
+|---|---|
+| Environment of sway | `XDG_RUNTIME_DIR` a private 0700 folder under the session's (`$XDG_RUNTIME_DIR/NAME-dev/nest/rt`), so its Wayland and sway sockets are nowhere else; `WLR_BACKENDS=headless`, `WLR_LIBINPUT_NO_DEVICES=1`, `WLR_RENDERER=pixman`. `WAYLAND_DISPLAY`, `DISPLAY`, `HYPRLAND_INSTANCE_SIGNATURE`, `HYPRLAND_CMD`, `SWAYSOCK`, `I3SOCK`, `WAYLAND_SOCKET` and the session D-Bus address are unset, and the session is not started if any is still there |
+| Screen | `output HEADLESS-1 mode WxH`, scale 1, plain background (`DEVKIT_BG`, the recorder's `TOUR_BG`), no bar, no borders, no gaps, no Xwayland. A single window fills it; a dialog it opens floats over it |
+| The app's environment | The sandbox home, the Wayland platform and `TOUR_APP_ENV` as in [Standalone app](#standalone-app), plus, for Qt, **software GL**: `LIBGL_ALWAYS_SOFTWARE=1` and `__EGL_VENDOR_LIBRARY_FILENAMES` pointing at Mesa's EGL vendor file (`/usr/share/glvnd/egl_vendor.d/50_mesa.json`). The pixman renderer gives no dmabuf, so a GL client draws with Mesa's llvmpipe over shared memory: slower than a GPU, the same picture. `DEVKIT_SOFTWARE_GL=0` leaves both out (for an app that must not have them; `TOUR_APP_ENV` overrides either) |
+| Input and screenshots | `vptr`, `wtype` and `grim` on the session's socket, given by absolute path and the private runtime folder; `vptr` also refuses a socket outside that folder. `wtype` waits `DEVKIT_HEADLESS_KEY_WAIT` ms (default 300) before its first key: with no keyboard of its own the session gives the client its keyboard a moment after `wtype` starts, and a key sent sooner is lost |
+
+`DEV_WINDOW=1`, `DEV_WATCH=1` and `dev watch` open a window on your desktop, which this backend has none of: they are refused (the view window is opt-in, `DEVKIT_BACKEND=hyprland`). The recorder shows no red strip and no view window on it: progress goes to the terminal and Ctrl+C cancels.
+
+`dev selfcheck` is the proof that it holds on your machine ([testing.md](testing.md#proving-your-desktop-sees-nothing-dev-selfcheck)).
 
 ## Hooks (functions in `devkit.conf`)
 
@@ -85,13 +106,13 @@ What `dev` does in app mode: `up` (fails, leaving the session up for `dev errors
 | `try_default` | by `try-setting`, when no command is given | print what the app shows for the setting (StartBar: its Dock layout) |
 | `tour_requires` | first, by `tour`, with your real home | check what the tour needs; print a reason and return non-zero if it is missing |
 
-In a hook running in `dev`: `nenv COMMAND…` runs a command in the session's environment (its home, its guard, its compositor), `$ID` is the plugin id, `$NEST_HOME` the session's home, `$NSIG`/`$NWD` its Hyprland signature and Wayland socket, `shell_up` asks whether its shell answers.
+In a hook running in `dev`: `nenv COMMAND…` runs a command in the session's environment (its home, its guard, its compositor), `$ID` is the plugin id, `$NEST_HOME` the session's home, `$NSIG`/`$NWD` its Hyprland signature (on the headless backend an id, `headless-PID`, never to be given to `hyprctl`) and Wayland socket (an absolute path there; `$NSWAY` is its sway socket), `shell_up` asks whether its shell answers.
 
 ## Commands `dev` has without any configuration
 
 `up`, `down`, `status`, `reload`, `watch`, `unwatch`, `ipc TARGET METHOD [ARGS]` (the plugin's IPC, in the session), `run CMD…`, `windows`, `set JSON`, `env`, `click`, `rclick`, `scroll`, `move`, `type`, `key`, `shot`, `errors`. `dev --help` lists them with your own.
 
-Environment: `DEV_SIZE=WxH` (the session's screen, default 1280x800), `DEV_WATCH=1` (open the view window with the session; default: none), `DEV_WINDOW=1` (the session's own window stays on your screen; no far monitor, no view window), `DEV_TTL=SECONDS` (it closes itself, default 1800), `DEV_QUIET=1` (no notes when the window is not up), `NEST_HOST_INPUT=1` (keep your mouse and keyboard on, for debugging the session by hand).
+Environment: `DEV_SIZE=WxH` (the session's screen, default 1280x800), `DEV_WATCH=1` (open the view window with the session; default: none; hyprland backend only), `DEV_WINDOW=1` (the session's own window stays on your screen; no far monitor, no view window; hyprland backend only), `DEV_TTL=SECONDS` (it closes itself, default 1800), `DEV_QUIET=1` (no notes when the window is not up), `NEST_HOST_INPUT=1` (keep your mouse and keyboard on, for debugging the session by hand; hyprland backend only), `DEVKIT_SELFCHECK_OK=1` (for `dev selfcheck`: you say your hands are off the mouse).
 
 ## What a tour file sets
 

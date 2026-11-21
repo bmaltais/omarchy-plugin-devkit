@@ -27,6 +27,12 @@
 #   dev watch | unwatch         open / close a view-only window on your screen showing the session live
 #   dev errors                  what the plugin logged there, with the shell's usual noise removed
 #   dev status | down           is it up / end it
+#   dev selfcheck               the canary: run a headless session and prove your Hyprland saw nothing (needs DEVKIT_SELFCHECK_OK=1 and your hands off the mouse)
+#
+# Backends. An app (DEVKIT_APP_CMD) runs by default on DEVKIT_BACKEND=headless: a headless sway with no window, monitor, focus or seat on
+# your desktop, so starting, driving and ending it cause no event of your compositor at all and your pointer never moves. Everything below
+# about a far monitor, a window of the session and the cursor warp describes DEVKIT_BACKEND=hyprland (the only backend of a plugin, which needs
+# the Omarchy shell). The view window (`watch`) is a window on your desktop, so it is for the hyprland backend only.
 #
 # The app adds commands of its own in its devkit.conf (a function dev_cmd_NAME, see docs/configuration.md), listed under its own
 # usage text: `dev --help`.
@@ -78,10 +84,14 @@ W=${DEV_SIZE%x*}
 H=${DEV_SIZE#*x}
 REAL_HOME=$HOME                             # session.sh swaps HOME for the sandbox; the view window needs the real one
 NEST_LABEL="TEST SESSION: dev"              # shown on the nested bar (session.sh adds it)
-orig_mon=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused) | .name' || true)
+orig_mon=""
+# (The headless backend never asks your compositor anything.)
+devkit_headless || orig_mon=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused) | .name' || true)
 gx=0; gy=0
 # shellcheck source=../lib/session.sh
 source "$DEVKIT/lib/session.sh"
+# shellcheck source=../lib/selfcheck.sh
+source "$DEVKIT/lib/selfcheck.sh"
 ID=$TOUR_PLUGIN_ID
 APP=$DEVKIT_APP_MODE
 
@@ -92,10 +102,17 @@ usage() {
 }
 
 # The session's own environment, for running the shell's commands inside it.
-nenv() { env HOME="$NEST_HOME" XDG_CONFIG_HOME="$NEST_HOME/.config" XDG_DATA_HOME="$NEST_HOME/.local/share" \
-  XDG_STATE_HOME="$NEST_HOME/.local/state" XDG_CACHE_HOME="$NEST_HOME/.cache" PATH="$GUARD:$PATH" \
-  WAYLAND_DISPLAY="$NWD" HYPRLAND_INSTANCE_SIGNATURE="$NSIG" ${DEVKIT_ENV[@]+"${DEVKIT_ENV[@]}"} "$@"; }
-nested_alive() { HYPRLAND_INSTANCE_SIGNATURE=$NSIG hyprctl monitors -j >/dev/null 2>&1; }
+nenv() {
+  if devkit_headless; then
+    headless_client env HOME="$NEST_HOME" XDG_CONFIG_HOME="$NEST_HOME/.config" XDG_DATA_HOME="$NEST_HOME/.local/share" \
+      XDG_STATE_HOME="$NEST_HOME/.local/state" XDG_CACHE_HOME="$NEST_HOME/.cache" PATH="$GUARD:$PATH" ${DEVKIT_ENV[@]+"${DEVKIT_ENV[@]}"} "$@"
+    return
+  fi
+  env HOME="$NEST_HOME" XDG_CONFIG_HOME="$NEST_HOME/.config" XDG_DATA_HOME="$NEST_HOME/.local/share" \
+    XDG_STATE_HOME="$NEST_HOME/.local/state" XDG_CACHE_HOME="$NEST_HOME/.cache" PATH="$GUARD:$PATH" \
+    WAYLAND_DISPLAY="$NWD" HYPRLAND_INSTANCE_SIGNATURE="$NSIG" ${DEVKIT_ENV[@]+"${DEVKIT_ENV[@]}"} "$@"
+}
+nested_alive() { if devkit_headless; then headless_alive; else HYPRLAND_INSTANCE_SIGNATURE=$NSIG hyprctl monitors -j >/dev/null 2>&1; fi; }
 load() { [[ -s $STATE ]] || die "no session: run dev up"; source "$STATE"; nested_alive || die "the session is gone: run dev up"; }
 # Is the app's window up in the session? By default: is a layer-shell surface of one of DEVKIT_LAYERS mapped. An app whose window is
 # not a layer of its own defines devkit_window_up in its devkit.conf (it can use nenv and layer_mapped).
@@ -121,6 +138,9 @@ app_errors() {
     grep -vE "$app_noise" | sort -u || true
 }
 app_noise='atspi|portal|qt\.svg|DEBUG|requestActivate|propagateSizeHints|libdecor'
+# The headless session has no input device of its own: each click or key arrives through a virtual device that is gone again a moment later, so
+# a client sees its pointer or keyboard leave without having seen it enter (foot says so). That is the session's plumbing, not the app's fault.
+devkit_headless && app_noise="$app_noise|compositor sent (pointer|keyboard)_leave event without"
 [[ -z $DEVKIT_NOISE ]] || app_noise="$app_noise|$DEVKIT_NOISE"
 plugin_errors() { # prints the plugin's logged errors (the app's, in app mode), one per line
   if ((APP)); then app_errors; return; fi
@@ -137,7 +157,9 @@ cmd_up() {
     cmd_down >/dev/null   # a window closed by hand leaves the rest of the session behind
   fi
   nested_requires || exit 1
-  [[ -n $orig_mon ]] || die "no focused monitor: run it from inside your Hyprland session"
+  if devkit_headless; then
+    [[ ${DEV_WINDOW:-0} != 1 && ${DEV_WATCH:-0} != 1 ]] || die "DEV_WINDOW and DEV_WATCH open a window on your desktop, which the headless backend has none of (DEVKIT_BACKEND=hyprland)"
+  else [[ -n $orig_mon ]] || die "no focused monitor: run it from inside your Hyprland session"; fi
   ledger_reap none   # what an earlier session, or a start that was killed, left behind
   rm -rf "$DEV"; mkdir -p "$DEV"
   ledger_start none
@@ -151,18 +173,21 @@ cmd_up() {
   NEST_DETACH=1 nested_start || exit 1
   nested_send_away
   nested_wait_ready
-  { printf 'NSIG=%q\nNWD=%q\nNMON=%q\nNW=%q\nNH=%q\nNEST_ADDR=%q\nLEDGER=%q\n' "$NSIG" "$NWD" "$NMON" "$NW" "$NH" "$NEST_ADDR" "$LEDGER"; } >"$STATE"
+  { printf 'NSIG=%q\nNWD=%q\nNMON=%q\nNW=%q\nNH=%q\nNEST_ADDR=%q\nLEDGER=%q\nNSWAY=%q\n' "$NSIG" "$NWD" "$NMON" "$NW" "$NH" "${NEST_ADDR:-}" "$LEDGER" "${NSWAY:-}"; } >"$STATE"
   trap - EXIT   # the session is up: from here `dev down` (or the watcher below) ends it
   # Ends the session when its close file appears, or after DEV_TTL seconds: it must not be left running. It belongs to this session
   # alone: once the state file is gone (dev down) or names another session, it ends at once, so it neither lingers for the TTL nor
   # ends a later session at the old one's deadline.
   setsid -f env DEV_WATCHER=1 DEVKIT_APP_ROOT="$REPO" bash -c 'for ((i = 0; i < $3 * 2; i++)); do [[ -s $1 ]] && break; grep -qx "NSIG=$5" "$4" 2>/dev/null || exit 0; sleep 0.5; done; exec "$2" down >/dev/null 2>&1' _ "$DEV/close" "$SELF" "$TTL" "$STATE" "$(printf %q "$NSIG")" >/dev/null 2>&1 </dev/null
-  if [[ ${DEV_WINDOW:-0} == 1 ]]; then
+  if devkit_headless; then
+    echo "dev up: headless session ${NW}x${NH} ($NMON: no window, monitor or seat of yours; look with dev shot), closes in ${TTL}s; app errors so far: $(plugin_errors | wc -l)"
+  elif [[ ${DEV_WINDOW:-0} == 1 ]]; then
     echo "dev up: session $NWD ${NW}x${NH}, its window on your screen (your mouse and keyboard cannot touch it; the pointer hides over it), closes in ${TTL}s; $( ((APP)) && echo app || echo plugin) errors so far: $(plugin_errors | wc -l)"
     return 0
+  else
+    echo "dev up: session $NWD ${NW}x${NH} out of reach of your mouse and keyboard (look with dev shot), closes in ${TTL}s; $( ((APP)) && echo app || echo plugin) errors so far: $(plugin_errors | wc -l)"
+    [[ ${DEV_WATCH:-0} != 1 ]] || cmd_watch
   fi
-  echo "dev up: session $NWD ${NW}x${NH} out of reach of your mouse and keyboard (look with dev shot), closes in ${TTL}s; $( ((APP)) && echo app || echo plugin) errors so far: $(plugin_errors | wc -l)"
-  [[ ${DEV_WATCH:-0} != 1 ]] || cmd_watch
   if ((APP)) && ! app_window_up; then
     echo "dev up: the app has no window yet ($( [[ -s $NEST/app.exit ]] && echo "it exited with status $(cat "$NEST/app.exit")" || echo "still starting, or DEVKIT_APP_CLASS/DEVKIT_APP_TITLE match nothing: dev windows")); see dev errors, or $NEST/app.log" >&2
     exit 1
@@ -170,6 +195,7 @@ cmd_up() {
 }
 
 cmd_watch() {
+  devkit_headless && die "the view window is a window on your desktop, which the headless backend has none of: look with dev shot, or DEVKIT_BACKEND=hyprland"
   load
   nested_view_open "$STATE" || exit 1
   echo "dev watch: view window open on your screen (view only; dev unwatch closes it)"
@@ -182,7 +208,7 @@ cmd_unwatch() {
 }
 
 cmd_down() {
-  [[ -s $STATE ]] || { hyprctl output remove "$FAR_MON" >/dev/null 2>&1 || true; ledger_reap none; echo "dev down: no session"; return 0; }
+  [[ -s $STATE ]] || { devkit_headless || hyprctl output remove "$FAR_MON" >/dev/null 2>&1 || true; ledger_reap none; echo "dev down: no session"; return 0; }
   source "$STATE"
   nest_pid=detached
   nested_view_close
@@ -198,7 +224,7 @@ cmd_status() {
   source "$STATE"
   nested_alive || { echo "dev status: the session is gone (dev up)"; return 1; }
   if ((APP)); then
-    echo "dev status: up $NWD ${NW}x${NH} out-of-reach, app $(app_alive && echo running || echo "EXITED ($(cat "$NEST/app.exit" 2>/dev/null || echo unknown))"), window $(overlay_up && echo open || echo closed), app errors $(plugin_errors | wc -l), guard refused $(wc -l <"$NEST/guard.log" 2>/dev/null || echo 0)"
+    echo "dev status: up $(devkit_headless && echo "headless ${NW}x${NH} $NMON" || echo "$NWD ${NW}x${NH} out-of-reach"), app $(app_alive && echo running || echo "EXITED ($(cat "$NEST/app.exit" 2>/dev/null || echo unknown))"), window $(overlay_up && echo open || echo closed), app errors $(plugin_errors | wc -l), guard refused $(wc -l <"$NEST/guard.log" 2>/dev/null || echo 0)"
     return 0
   fi
   echo "dev status: up $NWD ${NW}x${NH} out-of-reach, shell $(shell_up && echo answering || echo NOT-ANSWERING), window $(overlay_up && echo open || echo closed), plugin errors $(plugin_errors | wc -l), guard refused $(wc -l <"$NEST/guard.log" 2>/dev/null || echo 0)"
@@ -206,13 +232,15 @@ cmd_status() {
 
 # App mode: end the app and start it again from the launcher (the binary on disk, so a rebuild is picked up), in the environment the old one had.
 cmd_reload_app() {
-  local p env_file started took n i
+  local p env_file started took n i comp
   p=$(app_procs | head -n1 || true)
   # Its environment (the session's D-Bus address among it): the old app's, or the nested compositor's when the app is already gone.
-  [[ -n $p ]] || p=$(procs_with "XDG_CONFIG_HOME=$NEST_HOME/.config" | while read -r q; do [[ $(cat /proc/$q/comm 2>/dev/null) == Hyprland ]] && echo "$q"; done | head -n1 || true)
+  comp=Hyprland; devkit_headless && comp=sway
+  [[ -n $p ]] || p=$(procs_with "XDG_CONFIG_HOME=$NEST_HOME/.config" | while read -r q; do [[ $(cat /proc/$q/comm 2>/dev/null) == "$comp" ]] && echo "$q"; done | head -n1 || true)
   [[ -n $p ]] || die "the session's compositor is not running"
   mapfile -d '' env_file </proc/"$p"/environ
-  env_file+=("WAYLAND_DISPLAY=$NWD" "HYPRLAND_INSTANCE_SIGNATURE=$NSIG")
+  if devkit_headless; then env_file+=("WAYLAND_DISPLAY=$NWD" "SWAYSOCK=$NSWAY" "XDG_RUNTIME_DIR=$(headless_rt)")
+  else env_file+=("WAYLAND_DISPLAY=$NWD" "HYPRLAND_INSTANCE_SIGNATURE=$NSIG"); fi
   app_launcher_write || die "could not write the app's launcher"
   started=$(date +%s.%N)
   for p in $(app_procs); do kill -TERM "$p" 2>/dev/null || true; done
@@ -281,11 +309,19 @@ cmd_run() { # CMD [ARG...]: a program inside the session, detached
 
 cmd_windows() {
   load
+  if devkit_headless; then headless_windows; return; fi
   HYPRLAND_INSTANCE_SIGNATURE=$NSIG hyprctl clients -j | jq -r '.[] | select(.mapped) | "\(.class)\t\(.title)\tworkspace \(.workspace.id)"'
 }
 
 cmd_env() {
   load
+  if devkit_headless; then
+    printf 'unset HYPRLAND_INSTANCE_SIGNATURE DISPLAY\nexport HOME=%q XDG_CONFIG_HOME=%q XDG_DATA_HOME=%q XDG_STATE_HOME=%q XDG_CACHE_HOME=%q PATH=%q XDG_RUNTIME_DIR=%q WAYLAND_DISPLAY=%q SWAYSOCK=%q\n' \
+      "$NEST_HOME" "$NEST_HOME/.config" "$NEST_HOME/.local/share" "$NEST_HOME/.local/state" "$NEST_HOME/.cache" "$GUARD:$PATH" "$(headless_rt)" "$NWD" "$NSWAY"
+    local kv2
+    for kv2 in ${DEVKIT_ENV[@]+"${DEVKIT_ENV[@]}"}; do printf 'export %q\n' "$kv2"; done
+    return
+  fi
   printf 'export HOME=%q XDG_CONFIG_HOME=%q XDG_DATA_HOME=%q XDG_STATE_HOME=%q XDG_CACHE_HOME=%q PATH=%q WAYLAND_DISPLAY=%q HYPRLAND_INSTANCE_SIGNATURE=%q\n' \
     "$NEST_HOME" "$NEST_HOME/.config" "$NEST_HOME/.local/share" "$NEST_HOME/.local/state" "$NEST_HOME/.cache" "$GUARD:$PATH" "$NWD" "$NSIG"
   # DEVKIT_ENV (NAME=value words from devkit.conf) as well, so a script in the session sees what the session's shell does.
@@ -328,7 +364,7 @@ cmd_input() {
 cmd_shot() {
   load
   local f=${1:-${TMPDIR:-/tmp}/dev-shot-$(date +%H%M%S).png}
-  WAYLAND_DISPLAY=$NWD grim "$f" || die "grim could not capture the session"
+  nest_client grim "$f" || die "grim could not capture the session"
   echo "dev shot: $f"
 }
 
@@ -355,6 +391,7 @@ case ${1:-} in
   click | rclick | scroll | move | type | key) verb=$1; shift; cmd_input "$verb" "$@" ;;
   shot) shift; cmd_shot "$@" ;;
   errors) cmd_errors ;;
+  selfcheck) selfcheck_run ;;
   -h | --help | help | "") usage ;;
   *)
     if declare -F "dev_cmd_$1" >/dev/null; then

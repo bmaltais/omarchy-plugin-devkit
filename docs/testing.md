@@ -1,6 +1,6 @@
 # Testing a plugin in the session: `dev`
 
-`dev` runs your plugin in a second Hyprland with its own Omarchy shell, driven over its own Wayland socket. Your plugin is linked from your checkout, so a reload loads what is on disk, uncommitted files too. [how-it-works.md](how-it-works.md) says how it is built and why; [configuration.md](configuration.md) what the plugin tells it. `dev --help` is the reference.
+`dev` runs your plugin in a second Hyprland with its own Omarchy shell (or, for a standalone app, the app in a headless sway: [below](#a-standalone-app)), driven over its own Wayland socket. Your plugin is linked from your checkout, so a reload loads what is on disk, uncommitted files too. [how-it-works.md](how-it-works.md) says how it is built and why; [configuration.md](configuration.md) what the plugin tells it. `dev --help` is the reference.
 
 **The rule: try changes here, not on the real desktop.** A restart of your real shell makes the bar blink and closes its popups; a click or key sent to it moves your pointer and types into your windows; the plugin acts on your real windows and files. The session has none of that.
 
@@ -31,7 +31,7 @@ Every command prints one line and exits non-zero when it did not do what it says
 
 ## A standalone app
 
-With `DEVKIT_APP_CMD` in `devkit.conf` the session runs your app instead of the Omarchy shell, and the commands above work the same way against it: `dev up` (starts the session and the app, fails when the app shows no window), `dev shot`, `dev click`, `dev type`, `dev key`, `dev errors` (what the app printed to stdout and stderr, noise removed), `dev reload` (restart the app, to pick up a rebuild), `dev down`. `dev ipc` and `dev set` are plugin-only. The app runs with a sandbox home, `QT_QPA_PLATFORM=wayland` and the session's Wayland socket. [configuration.md](configuration.md#standalone-app) has the variables.
+With `DEVKIT_APP_CMD` in `devkit.conf` the session runs your app instead of the Omarchy shell, **in a headless sway by default** (`DEVKIT_BACKEND=headless`: no window, monitor, focus or seat on your desktop, nothing for your Hyprland to notice; [configuration.md](configuration.md#backends)), and the commands above work the same way against it (`DEV_WINDOW`, `DEV_WATCH` and `dev watch` are not part of it): `dev up` (starts the session and the app, fails when the app shows no window), `dev shot`, `dev click`, `dev type`, `dev key`, `dev errors` (what the app printed to stdout and stderr, noise removed), `dev reload` (restart the app, to pick up a rebuild), `dev down`. `dev ipc` and `dev set` are plugin-only. The app runs with a sandbox home, `QT_QPA_PLATFORM=wayland` and the session's Wayland socket. [configuration.md](configuration.md#standalone-app) has the variables.
 
 ```sh
 cmake --build build && dev up       # fugue: DEVKIT_APP_CMD=(build/fugue)
@@ -41,6 +41,19 @@ dev errors                          # 0 = nothing logged
 cmake --build build && dev reload   # new binary, same session
 dev down
 ```
+
+A Qt app draws in the headless sway with Mesa's software renderer, so it is slower than on your GPU and `dev up` can take a few seconds more; a screenshot is the same picture. `dev status` says `headless`. The first key of a `dev type` is held back 300 ms so it is not lost (`DEVKIT_HEADLESS_KEY_WAIT`).
+
+## Proving your desktop sees nothing: `dev selfcheck`
+
+The headless backend is built to cause no event on your Hyprland: no window, no monitor, no focus, no seat. `dev selfcheck` checks that on your machine. It listens read-only to your compositor's event socket (`socat -u`, which never sends), takes the monitor list, the window list (addresses and the session's pids) and the `ydotoold` count, runs `dev up`, `dev shot`, `dev click` and `dev down` and compares after each. It fails and ends the session the moment your Hyprland logged an `activewindow`, `focusedmon`, `monitoradded` or `monitorremoved`, `openwindow`, `closewindow` or `workspace` event (and the like), a monitor or window changed, a process of the session is a window of yours, or a `ydotoold` appeared. It only means something with your hands off the mouse and keyboard (a focus event you caused looks like one the session did), so it refuses unless you set `DEVKIT_SELFCHECK_OK=1`. Normal runs of the backend do not need it.
+
+```sh
+DEVKIT_SELFCHECK_OK=1 dev selfcheck          # then keep your hands off for ten seconds
+DEVKIT_SELFCHECK_OK=1 DEVKIT_SELFCHECK_EXTRA='status;type hi;key Return;reload' dev selfcheck   # more commands under the same watch
+```
+
+`DEVKIT_SELFCHECK_CLICK="X Y"` is where it clicks (default `1 1`). The log is in `$XDG_RUNTIME_DIR/NAME-selfcheck/`.
 
 ## A plugin's own scripts
 
@@ -54,4 +67,4 @@ The kit has no smoke test or screenshots script, because what they open is the p
 
 ## The checks that need no session
 
-`bin/lint ROOT` checks the scripts of a checkout against the kit's rules (a background launch must redirect its output; a sandbox must not copy or link the real `shell.json`). Run it in the plugin's check script. The kit's own tests are `tests/run.sh` (no Hyprland needed).
+`bin/lint ROOT` checks the scripts of a checkout against the kit's rules (a background launch must redirect its output; a sandbox must not copy or link the real `shell.json`). Run it in the plugin's check script. The kit's own tests are `tests/run.sh` (no Hyprland needed, and none of them can touch your input or your desktop: the tripwire in `tests/lib.sh` stands in for `sway` and `swaymsg` as for `hyprctl`, and the headless tests stub them explicitly: sway's generated config, the environment it is started with, the start and stop, the window check, the ledger and the canary's comparison).

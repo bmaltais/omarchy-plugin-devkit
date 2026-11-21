@@ -8,11 +8,13 @@ tour tours/hero.sh --install   # records it and copies it to the tour's TOUR_OUT
 bin/sheet /tmp/hero.avif       # one contact sheet of the whole recording, to check it at a glance
 ```
 
-The tour runs in the [test session](testing.md), so **your mouse and keyboard stay yours** and nothing of yours is changed: a red strip along the top of your screen shows the step and has a **Cancel recording** button (Ctrl+C in the terminal does the same), and a view-only window shows the recording as it happens. Cancel and the run stops within a step, the sandbox is thrown away and nothing is kept. Do not run a tour and `dev` at the same time.
+The tour runs in the [test session](testing.md), so **your mouse and keyboard stay yours** and nothing of yours is changed. (An app, `DEVKIT_APP_CMD`, is filmed on the [headless backend](configuration.md#backends) by default: nothing at all is drawn on your desktop, no strip and no view window; progress goes to the terminal and Ctrl+C cancels. The rest of this paragraph is the nested Hyprland a plugin runs in.) A red strip along the top of your screen shows the step and has a **Cancel recording** button (Ctrl+C in the terminal does the same), and a view-only window shows the recording as it happens. Cancel and the run stops within a step, the sandbox is thrown away and nothing is kept. Do not run a tour and `dev` at the same time.
 
 A tour takes a few minutes to record, of which the tour itself is the minute and a half. Retake it when a step of it changes (a menu row moves, a label is renamed), and look at the result before you commit it: it clicks the real plugin, so a changed layout can make it miss. Do not run two at once.
 
 ## What happens when you run it
+
+(On the headless backend steps 1 and 3's strip and view window do not exist: the session is a headless sway of the tour's size, and the output's background is `TOUR_BG`.)
 
 1. **A far monitor** (`TOURTEST`, 1280×800) is created 20,000 px to the right of your screens.
 2. **The sandbox** is built (a home with a minimal `shell.json` that loads the plugin from your checkout with the settings the tour starts from, links to your themes, the guard), and the tour's `tour_prepare` runs against it (`$HOME` is the sandbox).
@@ -122,7 +124,7 @@ The same as the test session ([how-it-works.md](how-it-works.md)), plus:
 - **Clicks miss**: the layout is not what you measured. Ask the plugin where things are (an IPC `layout`) rather than hard-coding pixels, and reset anything remembered (a saved window size or place) in `tour_prepare`.
 - **The film is on the wrong workspace after a hover**: a posed window was left as the active window; switch to its workspace and back ([how-it-works.md](how-it-works.md#what-went-wrong-on-the-way-and-the-rule-it-left)).
 - **The run is slow and the film shows the wallpaper**: `/tmp` was full. Look at `df -h /tmp`; a run removes its frames now, an older recorder may not have.
-- **A run was killed with `kill -9`**: the cleanup did not run. `hyprctl output remove TOURTEST`, and stop the leftovers: the `quickshell` running `tour-banner.qml` and `dev-view.qml`, and the nested Hyprland (they carry the sandbox's `XDG_CONFIG_HOME`, see `nested_procs` in `lib/session.sh`). Nothing of yours needs restoring. Remove the run's folder in `/tmp` by hand (`TOUR_KEEP_TMP` or a killed run leaves it).
+- **A run was killed with `kill -9`**: the cleanup did not run. (Headless backend: `dev down`, or the next run, undoes it from the ledger; there is no monitor to remove.) `hyprctl output remove TOURTEST`, and stop the leftovers: the `quickshell` running `tour-banner.qml` and `dev-view.qml`, and the nested Hyprland (they carry the sandbox's `XDG_CONFIG_HOME`, see `nested_procs` in `lib/session.sh`). Nothing of yours needs restoring. Remove the run's folder in `/tmp` by hand (`TOUR_KEEP_TMP` or a killed run leaves it).
 - **The AVIF is too big**: shorten the tour, raise `TOUR_AVIF_CRF`, or lower the width.
 - **A step waits forever**: `TOUR_MAX_SECONDS` ends the run and says so.
 

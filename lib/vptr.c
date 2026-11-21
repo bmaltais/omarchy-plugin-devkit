@@ -11,11 +11,13 @@
 //   vptr rclick X Y W H      move there, press and release the right button
 //   vptr scroll X Y W H N    move there, turn the wheel N notches (positive scrolls down, negative up)
 //   vptr probe               only the socket check below (the session runs it before wtype)
+//   vptr names NAME...       no socket: exit 0 if every NAME is an output name a nested compositor has (HEADLESS-n, WAYLAND-n), else 3
 //
 // Every verb first checks the socket it was given and exits 3 unless it belongs to a nested compositor: WAYLAND_DISPLAY must be set and
 // not equal DEVKIT_HOST_WAYLAND_DISPLAY (your own), and every wl_output the compositor lists must be named HEADLESS-n or WAYLAND-n, which
 // is what a nested or headless Hyprland calls its outputs. Your own compositor lists real ones (eDP-1, DP-2 ...), so it is refused even
-// when the variable names the wrong socket.
+// when the variable names the wrong socket. With DEVKIT_ONLY_SOCKET_UNDER=DIR (the headless backend sets it) WAYLAND_DISPLAY must also be
+// an absolute path inside DIR, the session's private runtime folder: a socket by name, which is looked for in your own, is refused.
 //
 // Built with lib/build-vptr.sh.
 #include <stdint.h>
@@ -76,9 +78,18 @@ static uint32_t now_ms(void) {
 }
 
 int main(int argc, char **argv) {
+  if (argc >= 2 && !strcmp(argv[1], "names")) {
+    for (int i = 2; i < argc; i++) if (!nested_name(argv[i])) { fprintf(stderr, "vptr: '%s' is not a nested output name\n", argv[i]); return 3; }
+    return argc > 2 ? 0 : 2;
+  }
   const char *wd = getenv("WAYLAND_DISPLAY"), *host = getenv("DEVKIT_HOST_WAYLAND_DISPLAY");
   if (!wd || !*wd) { fprintf(stderr, "vptr: refusing: WAYLAND_DISPLAY is empty (it would be your own compositor)\n"); return 3; }
   if (host && *host && !strcmp(wd, host)) { fprintf(stderr, "vptr: refusing: WAYLAND_DISPLAY is your own compositor's socket (%s)\n", wd); return 3; }
+  const char *only = getenv("DEVKIT_ONLY_SOCKET_UNDER");
+  if (only && *only) {
+    size_t n = strlen(only);
+    if (strncmp(wd, only, n) || wd[n] != '/' || strstr(wd, "/../")) { fprintf(stderr, "vptr: refusing: WAYLAND_DISPLAY (%s) is not a socket inside %s\n", wd, only); return 3; }
+  }
   int probe = argc == 2 && !strcmp(argv[1], "probe");
   if (!probe && argc != 6 && argc != 7 && argc != 8) { fprintf(stderr, "usage: vptr probe | move|click|rclick|press|release X Y W H | scroll X Y W H N | drag X Y W H DX DY\n"); return 2; }
   const char *verb = argv[1];
